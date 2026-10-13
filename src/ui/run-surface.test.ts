@@ -561,6 +561,16 @@ describe("transport", () => {
     expect(find('[data-action="play-pause"]').textContent).toBe("Pause");
   });
 
+  it("keeps the pattern's settings with the load, ahead of the actions", () => {
+    // As one wrapping row, a narrow screen put the actions between the Pattern
+    // menu and the settings it opened.
+    const groups = [...find(".wtr-transport").children].map((child) => (child as HTMLElement).dataset["group"]);
+    expect(groups).toEqual(["load", "actions"]);
+    expect(find('[data-group="load"]').querySelector(".wtr-pattern")).toBeTruthy();
+    expect(find('[data-group="load"]').querySelector('[data-action="pattern"]')).toBeTruthy();
+    expect(find('[data-group="actions"]').querySelector('[data-action="rerun"]')).toBeTruthy();
+  });
+
   it("offers speeds but no scrubber — sim time only moves forward", () => {
     expect(find('[data-action="speed"]')).toBeTruthy();
     expect(root.querySelector('input[type="range"][data-action="speed"]')).toBeNull();

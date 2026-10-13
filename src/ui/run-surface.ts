@@ -339,18 +339,29 @@ export function createRunSurface(
   present.dataset["action"] = "present";
   present.title = "Full-width canvas for a shared screen. Click a box to steer it.";
 
-  const transport = element("div", "wtr-transport");
-  transport.append(playPause, speed, loadField, patternField, rerun, armToggle, breakingPoint, present, validate);
-  if (options.onKeep !== undefined) transport.append(keep);
+  // Two groups, each wrapping on its own. The load and its pattern come first,
+  // with the pattern's settings directly under the menu that chose them; the
+  // actions follow on their own line. As one wrapping row, a narrow screen put
+  // the actions between the Pattern menu and its settings.
+  const loadGroup = element("div", "wtr-transport-group");
+  loadGroup.dataset["group"] = "load";
+  loadGroup.append(playPause, speed, loadField, patternField, patternRow);
+
+  const actions = element("div", "wtr-transport-group");
+  actions.dataset["group"] = "actions";
+  actions.append(rerun, armToggle, breakingPoint, present, validate);
+  if (options.onKeep !== undefined) actions.append(keep);
 
   if (options.onEdit !== undefined) {
     const edit = element("button", "wtr-button", "Edit model");
     edit.type = "button";
     edit.dataset["action"] = "edit";
     edit.addEventListener("click", () => options.onEdit?.());
-    transport.append(edit);
+    actions.append(edit);
   }
-  transport.append(patternRow);
+
+  const transport = element("div", "wtr-transport");
+  transport.append(loadGroup, actions);
 
   // --------------------------------------------------------------- presets
   const presetRow = element("div", "wtr-presets");

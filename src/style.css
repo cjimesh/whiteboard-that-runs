@@ -148,6 +148,22 @@ body {
 
 .wtr-stage { grid-area: stage; }
 .wtr-transport { grid-area: transport; }
+
+/* The transport stacks its two groups (the load, then the actions), and each
+   group wraps within itself. The extra class in the selector lets this win over
+   the row layout `.wtr-transport` shares with `.wtr-presets` further down. */
+.wtr-run-surface .wtr-transport {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+}
+
+.wtr-transport-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 18px;
+}
 .wtr-panel-host { grid-area: panel; }
 
 .wtr-controls {
@@ -673,6 +689,12 @@ body {
 .wtr-arm-toggle {
   display: inline-flex;
   gap: 2px;
+}
+
+/* Only a model with a proposal has arms to switch between. Empty, it still took
+   a gap's width in the row and left a hole after "Rerun clean". */
+.wtr-arm-toggle:empty {
+  display: none;
 }
 
 .wtr-arm-toggle .wtr-button[data-selected="true"] {
