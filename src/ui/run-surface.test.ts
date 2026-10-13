@@ -409,6 +409,103 @@ describe("a steered run says so, and a clean rerun is one click", () => {
   });
 });
 
+describe("the load pattern", () => {
+  const offeredBetween = (from: number, to: number): number => {
+    const buckets = surface.simulation().series().filter((bucket) => bucket.start >= from && bucket.start < to);
+    return buckets.reduce((sum, bucket) => sum + bucket.system.arrivals, 0) / (to - from);
+  };
+
+  it("starts steady, with no settings line", () => {
+    expect(find<HTMLSelectElement>('[data-action="pattern"]').value).toBe("steady");
+    expect(find(".wtr-pattern").dataset["pattern"]).toBe("steady");
+  });
+
+  it("spikes the live run without restarting it", () => {
+    sim.runUntil(5);
+    setValue('[data-action="load"]', "10", "input");
+    setValue('[data-action="pattern"]', "spiky", "change");
+
+    expect(sim.now()).toBe(5);
+    const last = sim.recorded().mutations.at(-1);
+    expect(last).toMatchObject({ kind: "set-load", at: 5 });
+
+    sim.runUntil(40);
+    // Spikes of 3× for 2 s at the end of every 20 s, in sim time since the start.
+    expect(offeredBetween(38, 40)).toBeGreaterThan(20);
+    expect(offeredBetween(25, 37)).toBeLessThan(15);
+  });
+
+  it("says what the pattern adds up to", () => {
+    setValue('[data-action="load"]', "10", "input");
+    setValue('[data-action="pattern"]', "spiky", "change");
+    expect(find("[data-pattern-summary]").textContent).toBe("Averages 12/s and peaks at 30/s over the next hour.");
+  });
+
+  it("applies a changed spike height, and logs it as one change", () => {
+    setValue('[data-action="load"]', "10", "input");
+    setValue('[data-action="pattern"]', "spiky", "change");
+    setValue('[data-action="pattern:height"]', "5", "change");
+    expect(find("[data-pattern-summary]").textContent).toContain("peaks at 50/s");
+
+    const chips = [...root.querySelectorAll(".wtr-change")].map((chip) => chip.textContent);
+    expect(chips.at(-1)).toContain("load pattern → spikes of 5× for 2 s every 20 s");
+    // Leaving the field again is not a second change.
+    setValue('[data-action="pattern:height"]', "5", "change");
+    expect(root.querySelectorAll(".wtr-change").length).toBe(chips.length);
+  });
+
+  it("refuses a bad setting and keeps running the load it had", () => {
+    setValue('[data-action="pattern"]', "spiky", "change");
+    const before = sim.recorded().mutations.length;
+    setValue('[data-action="pattern:lasting"]', "30", "change");
+    expect(find(".wtr-pattern-error").textContent).toContain("less than the gap");
+    expect(sim.recorded().mutations.length).toBe(before);
+  });
+
+  it("runs a formula typed by the driver", () => {
+    sim.runUntil(2);
+    setValue('[data-action="pattern"]', "formula", "change");
+    setValue('[data-action="pattern:formula"]', "t < 20 ? 5 : 40", "change");
+    expect(find(".wtr-pattern-error").textContent).toBe("");
+
+    sim.runUntil(40);
+    expect(offeredBetween(10, 20)).toBeLessThan(12);
+    expect(offeredBetween(25, 40)).toBeGreaterThan(30);
+  });
+
+  it("refuses a formula it cannot read, with the reason", () => {
+    setValue('[data-action="pattern"]', "formula", "change");
+    const before = sim.recorded().mutations.length;
+    setValue('[data-action="pattern:formula"]', "fetch(1)", "change");
+    expect(find(".wtr-pattern-error").textContent).toContain('"fetch" is not a function');
+    expect(sim.recorded().mutations.length).toBe(before);
+  });
+
+  it("keeps a patterned session replayable", () => {
+    sim.runUntil(3);
+    setValue('[data-action="pattern"]', "random", "change");
+    sim.runUntil(12);
+    setValue('[data-action="load"]', "30", "input");
+    sim.runUntil(20);
+
+    const replay = createModelSimulation(sim.recorded());
+    replay.runUntil(20);
+    expect(JSON.stringify(replay.series())).toBe(JSON.stringify(sim.series()));
+  });
+
+  it("survives a clean rerun, laid out from time zero", () => {
+    setValue('[data-action="load"]', "10", "input");
+    setValue('[data-action="pattern"]', "spiky", "change");
+    click('[data-action="rerun"]');
+
+    const load = surface.simulation().recorded().load;
+    expect(load.slice(0, 2)).toEqual([
+      { rate: 10, duration: 18 },
+      { rate: 30, duration: 2 },
+    ]);
+  });
+});
+
 describe("transport", () => {
   it("stops advancing the clock when paused, and says so", () => {
     click('[data-action="play-pause"]');

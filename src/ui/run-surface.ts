@@ -38,6 +38,16 @@ import type { Guidance } from "./demo.ts";
 import { createValidationPanel, type ValidationPanel } from "./validation-panel.ts";
 import { createVerdictPanel, type VerdictPanel } from "./verdict-panel.ts";
 import type { SweepTarget } from "../verdict/sweep.ts";
+import {
+  checkPattern,
+  DEFAULT_PATTERNS,
+  describePattern,
+  patternSegments,
+  summarizePattern,
+  type LoadPattern,
+  type PatternKind,
+  type PatternResult,
+} from "../model/load-pattern.ts";
 import { baselineOf, NO_COMPARISON, type ComparisonSpec } from "../verdict/study.ts";
 
 export interface RunSurface {
@@ -239,6 +249,41 @@ export function createRunSurface(
   const loadField = element("label", "wtr-field");
   loadField.append(element("span", "wtr-field-label", "Load"), loadInput, loadValue);
 
+  // The shape of the load over time. The slider stays the number being argued
+  // about (the rate between spikes, or the average); the pattern says how the
+  // load moves around it. Each kind remembers its last settings, so flipping to
+  // steady and back to spiky does not throw away the spikes somebody typed.
+  const PATTERN_LABELS: Record<PatternKind, string> = {
+    steady: "Steady",
+    spiky: "Spiky",
+    random: "Random",
+    formula: "Formula",
+  };
+  const patterns: { [K in PatternKind]: Extract<LoadPattern, { kind: K }> } = { ...DEFAULT_PATTERNS };
+  let pattern: LoadPattern = patterns.steady;
+
+  const patternSelect = element("select", "wtr-select");
+  patternSelect.dataset["action"] = "pattern";
+  patternSelect.setAttribute("aria-label", "Load pattern");
+  for (const kind of Object.keys(PATTERN_LABELS) as PatternKind[]) {
+    const option = element("option", undefined, PATTERN_LABELS[kind]);
+    option.value = kind;
+    patternSelect.append(option);
+  }
+  const patternField = element("label", "wtr-field");
+  patternField.append(element("span", "wtr-field-label", "Pattern"), patternSelect);
+
+  // The pattern's own settings, the sentence saying what they add up to, and any
+  // refusal. A full-width line under the transport, so a long formula has room.
+  const patternRow = element("div", "wtr-pattern");
+  patternRow.dataset["pattern"] = "steady";
+  const patternInputs = element("div", "wtr-pattern-inputs");
+  const patternSummary = element("p", "wtr-pattern-note");
+  patternSummary.dataset["patternSummary"] = "";
+  const patternError = element("p", "wtr-pattern-error");
+  patternError.setAttribute("role", "alert");
+  patternRow.append(patternInputs, patternSummary, patternError);
+
   const validate = element("button", "wtr-button", "Why trust this?");
   validate.title = "The simulator against queueing theory's textbook answers, run here and now.";
   validate.type = "button";
@@ -277,7 +322,7 @@ export function createRunSurface(
   present.title = "Full-width canvas for a shared screen. Click a box to steer it.";
 
   const transport = element("div", "wtr-transport");
-  transport.append(playPause, speed, loadField, rerun, armToggle, breakingPoint, present, validate);
+  transport.append(playPause, speed, loadField, patternField, rerun, armToggle, breakingPoint, present, validate);
 
   if (options.onEdit !== undefined) {
     const edit = element("button", "wtr-button", "Edit model");
@@ -286,6 +331,7 @@ export function createRunSurface(
     edit.addEventListener("click", () => options.onEdit?.());
     transport.append(edit);
   }
+  transport.append(patternRow);
 
   // --------------------------------------------------------------- presets
   const presetRow = element("div", "wtr-presets");
@@ -917,14 +963,152 @@ export function createRunSurface(
     player?.setRate(Number(speed.value));
   });
 
+  // A pattern that would freeze the page is refused, not run. Ten times the
+  // slider's top is far past anything the slider's range was built around.
+  const patternLimit = controls.load.max * 10;
+
+  /** The current pattern at the slider's rate, laid out from sim time `from`. */
+  const layLoad = (candidate: LoadPattern, from: number, seed: string): PatternResult =>
+    patternSegments(candidate, Number(loadInput.value), { from, seed, limit: patternLimit });
+
+  const showPattern = (laid: PatternResult): void => {
+    patternRow.dataset["pattern"] = pattern.kind;
+    patternError.textContent = laid.ok ? "" : laid.error;
+    if (laid.ok) patternSummary.textContent = pattern.kind === "steady" ? "" : summarizePattern(laid);
+  };
+
+  /**
+   * Replace the offered load from now on. Returns whether it was applied.
+   *
+   * A refused pattern leaves the run on the load it already had, for the same
+   * reason a refused capacity does: the screen must never show one load while
+   * the simulation obeys another.
+   */
+  const applyLoad = (candidate: LoadPattern): boolean => {
+    const laid = layLoad(candidate, sim.now(), sim.recorded().seed);
+    if (!laid.ok) {
+      patternError.textContent = laid.error;
+      return false;
+    }
+    pattern = candidate;
+    // Each drag position and each pattern change is a recorded mutation carrying
+    // the segments themselves, which is what makes the session replayable.
+    sim.record({ kind: "set-load", segments: laid.segments });
+    markSteered();
+    showPattern(laid);
+    return true;
+  };
+
   loadInput.addEventListener("input", () => {
     const value = Number(loadInput.value);
     loadValue.textContent = `${value}/s`;
-    // One long segment, replaced wholesale. Each drag position is a recorded
-    // mutation, which is what makes the drag itself replayable.
-    sim.record({ kind: "set-load", segments: [{ rate: value, duration: 3600 }] });
-    markSteered();
+    if (!applyLoad(pattern)) return;
     logChange(`load → ${value}/s`, true);
+    player?.repaint();
+  });
+
+  // One text field per setting of the chosen pattern. Rebuilt when the kind
+  // changes; each field applies on `change`, like every typed field here.
+  const buildPatternInputs = (): void => {
+    patternInputs.replaceChildren();
+    const current = patterns[pattern.kind];
+
+    const addInput = (
+      key: string,
+      label: string,
+      unit: string,
+      value: string,
+      update: (text: string) => LoadPattern | string,
+      className = "wtr-number wtr-number-small",
+    ): void => {
+      const input = element("input", className);
+      input.type = "text";
+      input.value = value;
+      input.dataset["action"] = `pattern:${key}`;
+      input.setAttribute("aria-label", unit === "" ? label : `${label}, ${unit}`);
+      input.spellcheck = false;
+      input.addEventListener("change", () => {
+        const next = update(input.value.trim());
+        if (typeof next === "string") {
+          patternError.textContent = next;
+          return;
+        }
+        const problem = checkPattern(next);
+        if (problem !== null) {
+          patternError.textContent = problem;
+          return;
+        }
+        // Focus leaving a field already applied fires `change` too; a no-op
+        // would put a duplicate chip on screen and a duplicate entry in the log.
+        if (JSON.stringify(next) === JSON.stringify(pattern)) return;
+        if (!applyLoad(next)) return;
+        (patterns as Record<PatternKind, LoadPattern>)[next.kind] = next;
+        logChange(`load pattern → ${describePattern(next)}`);
+        player?.repaint();
+      });
+      const field = element("label", "wtr-field");
+      field.append(element("span", "wtr-field-label", label), input);
+      if (unit !== "") field.append(element("span", "wtr-field-unit", unit));
+      patternInputs.append(field);
+    };
+
+    const number = (text: string, what: string): number | string => {
+      const value = Number(text.replace(/[×x%s]$/i, "").trim());
+      return text === "" || !Number.isFinite(value) ? `"${text}" is not a number of ${what}.` : value;
+    };
+
+    if (current.kind === "spiky") {
+      addInput("height", "Spike", "× load", String(current.height), (text) => {
+        const height = number(text, "times the load");
+        return typeof height === "string" ? height : { ...patterns.spiky, height };
+      });
+      addInput("lasting", "For", "s", String(current.lasting), (text) => {
+        const lasting = number(text, "seconds");
+        return typeof lasting === "string" ? lasting : { ...patterns.spiky, lasting };
+      });
+      addInput("every", "Every", "s", String(current.every), (text) => {
+        const every = number(text, "seconds");
+        return typeof every === "string" ? every : { ...patterns.spiky, every };
+      });
+    } else if (current.kind === "random") {
+      addInput("spread", "Swing ±", "%", String(Math.round(current.spread * 100)), (text) => {
+        const percent = number(text, "percent");
+        return typeof percent === "string" ? percent : { ...patterns.random, spread: percent / 100 };
+      });
+      addInput("every", "New rate every", "s", String(current.every), (text) => {
+        const every = number(text, "seconds");
+        return typeof every === "string" ? every : { ...patterns.random, every };
+      });
+    } else if (current.kind === "formula") {
+      addInput(
+        "formula",
+        "Rate =",
+        "",
+        current.text,
+        (text) => ({ kind: "formula", text }),
+        "wtr-number wtr-formula",
+      );
+      patternInputs.append(
+        element(
+          "p",
+          "wtr-pattern-note wtr-formula-help",
+          "Requests a second at time t (seconds since the run started), read once a second. base is the slider. " +
+            "Use + − × ÷ ^, sin, cos, abs, min, max, floor, sqrt, exp, pi, and a ? b : c, for example t > 60 ? base * 2 : base.",
+        ),
+      );
+    }
+  };
+
+  patternSelect.addEventListener("change", () => {
+    const kind = patternSelect.value as PatternKind;
+    const next = patterns[kind];
+    if (!applyLoad(next)) {
+      // Back to the pattern that is actually running, so the select never lies.
+      patternSelect.value = pattern.kind;
+      return;
+    }
+    buildPatternInputs();
+    logChange(`load pattern → ${describePattern(next)}`);
     player?.repaint();
   });
 
@@ -974,7 +1158,12 @@ export function createRunSurface(
         })),
         edges: withLiveCalls(model.edges),
       },
-      load: [{ rate: Number(loadInput.value), duration: 3600 }],
+      // The pattern from sim time zero, on the same seed: a clean rerun of a
+      // spiky run is spiky in the same places.
+      load: (() => {
+        const laid = layLoad(pattern, 0, previous.seed);
+        return laid.ok ? laid.segments : [{ rate: Number(loadInput.value), duration: 3600 }];
+      })(),
       seed: previous.seed,
       mutations: [],
       ...(previous.arrivalProcess === undefined ? {} : { arrivalProcess: previous.arrivalProcess }),

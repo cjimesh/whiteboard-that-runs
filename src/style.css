@@ -227,6 +227,53 @@ body {
   justify-content: space-between;
 }
 
+/* The load pattern's settings take a line of their own under the transport, so
+   a long formula has room and the buttons above it never move. Steady load has
+   no settings and no line. */
+.wtr-pattern {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wtr-pattern[data-pattern="steady"]:not(:has(.wtr-pattern-error:not(:empty))) {
+  display: none;
+}
+
+.wtr-pattern-inputs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  align-items: center;
+}
+
+.wtr-pattern-inputs .wtr-field:has(.wtr-formula) {
+  flex: 1 1 28rem;
+}
+
+.wtr-formula {
+  flex: 1;
+  width: auto;
+  min-width: 16rem;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+
+.wtr-pattern-note {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.wtr-pattern-note:empty {
+  display: none;
+}
+
+.wtr-formula-help {
+  flex-basis: 100%;
+}
+
 .wtr-preset-note {
   margin: 0;
   font-size: 0.8rem;
@@ -312,14 +359,16 @@ body {
   color: var(--text);
 }
 
-.wtr-field-error {
+.wtr-field-error,
+.wtr-pattern-error {
   margin: 0;
   font-size: 0.8rem;
   line-height: 1.45;
   color: var(--fold);
 }
 
-.wtr-field-error:empty {
+.wtr-field-error:empty,
+.wtr-pattern-error:empty {
   display: none;
 }
 
