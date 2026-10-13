@@ -4,6 +4,9 @@
 two numbers, and watch which component fails first. Change a timeout, a retry policy, or the shape
 of the traffic while it runs, and the whole room sees the consequence within seconds.
 
+**[Try it in your browser](https://cjimesh.github.io/whiteboard-that-runs/)**. Nothing to install,
+and the page sends nothing anywhere.
+
 [![The demo system under spiky load: it collapses into a retry storm, recovers when retries are switched off, then runs a load pattern typed as a formula.](docs/demo.gif)](docs/demo.mp4)
 
 *Thirty seconds of the built-in demo. Spiky traffic that averages 26 requests a second, half of what
@@ -24,6 +27,9 @@ computes what a system with the stated properties would do. It does not check th
 are correct, and it is not a capacity planner for a production system.
 
 ## Try it
+
+The quickest way is the [hosted copy](https://cjimesh.github.io/whiteboard-that-runs/), rebuilt from
+`main` on every push. To build it yourself:
 
 ```
 npm install
