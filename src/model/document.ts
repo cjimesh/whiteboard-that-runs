@@ -465,7 +465,7 @@ export function validateDocument(document: WhiteboardDocument): DocumentValidati
         if (!policy.ok) errors.push(`the call "${edge.from}" → "${edge.to}" has a setting it cannot use: ${policy.errors[0]}`);
       }
     }
-    const key = `${edge.from} ${edge.to}`;
+    const key = `${edge.from}\u0000${edge.to}`;
     if (seen.has(key)) errors.push(`"${edge.from}" → "${edge.to}" is drawn twice`);
     seen.add(key);
   }
@@ -730,7 +730,7 @@ function closedLoops(document: WhiteboardDocument): string[][] {
     const escapes = [...members].some((id) => (onward.get(id) ?? []).some((next) => !members.has(next)));
     if (escapes) continue;
 
-    const key = [...members].sort().join(" ");
+    const key = [...members].sort().join("\u0000");
     if (reported.has(key)) continue;
     reported.add(key);
     loops.push([...members]);
