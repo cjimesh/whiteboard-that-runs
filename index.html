@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Whiteboard That Runs</title>
+    <meta
+      name="description"
+      content="A system-design canvas where the diagram runs: model a system, put it under load, watch where it folds. Runs entirely in your browser."
+    />
+  </head>
+  <body>
+    <div id="app"></div>
+    <!--
+      Shown only under the narrow-viewport breakpoint, where the app is hidden
+      (R12). Lives in the document rather than being rendered by script so it is
+      the one thing that still appears if the bundle fails to run at all.
+    -->
+    <div class="wtr-narrow-notice">
+      <p>
+        Whiteboard That Runs needs a wider screen. A running system model is meant to be read at a
+        glance by a room looking at a shared screen, and that does not survive a phone-sized window.
+        Come back on a desktop.
+      </p>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

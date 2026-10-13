@@ -1,0 +1,118 @@
+{
+  "format": "whiteboard-that-runs/model",
+  "version": 1,
+  "document": {
+    "name": "Orders (demo)",
+    "components": [
+      {
+        "id": "balancer-1",
+        "kind": "balancer",
+        "preset": "balancer/round-robin",
+        "spec": {
+          "balancer": {
+            "policy": "round-robin"
+          }
+        }
+      },
+      {
+        "id": "service-1",
+        "kind": "service",
+        "preset": null,
+        "spec": {
+          "concurrency": 200,
+          "service": {
+            "policy": "fixed",
+            "mean": 0.002
+          },
+          "queue": {
+            "policy": "fifo",
+            "capacity": 5000
+          },
+          "timeout": {
+            "policy": "fixed",
+            "after": 0.25
+          },
+          "retry": {
+            "policy": "exponential",
+            "attempts": 3,
+            "delay": 0.05,
+            "factor": 2,
+            "maxDelay": 5
+          }
+        }
+      },
+      {
+        "id": "service-2",
+        "kind": "service",
+        "preset": null,
+        "spec": {
+          "concurrency": 200,
+          "service": {
+            "policy": "fixed",
+            "mean": 0.002
+          },
+          "queue": {
+            "policy": "fifo",
+            "capacity": 5000
+          },
+          "timeout": {
+            "policy": "fixed",
+            "after": 0.25
+          },
+          "retry": {
+            "policy": "exponential",
+            "attempts": 3,
+            "delay": 0.05,
+            "factor": 2,
+            "maxDelay": 5
+          }
+        }
+      },
+      {
+        "id": "datastore-1",
+        "kind": "datastore",
+        "preset": null,
+        "spec": {
+          "concurrency": 1,
+          "service": {
+            "policy": "exponential",
+            "mean": 0.02
+          },
+          "queue": {
+            "policy": "fifo",
+            "capacity": 30
+          }
+        }
+      }
+    ],
+    "edges": [
+      {
+        "from": "balancer-1",
+        "to": "service-1"
+      },
+      {
+        "from": "balancer-1",
+        "to": "service-2"
+      },
+      {
+        "from": "service-1",
+        "to": "datastore-1"
+      },
+      {
+        "from": "service-2",
+        "to": "datastore-1"
+      }
+    ],
+    "entryId": "balancer-1",
+    "load": [
+      {
+        "rate": 22,
+        "duration": 3600
+      }
+    ],
+    "seed": "model-v1",
+    "bucketWidth": 0.25,
+    "delta": [],
+    "disputed": null
+  }
+}

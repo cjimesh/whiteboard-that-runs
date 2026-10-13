@@ -1,0 +1,9 @@
+node_modules/
+dist/
+# Local, root-free browser toolchain (see the Playwright note in tooling-env.ts).
+# No trailing slash: it may be a symlink.
+.tooling
+*.local
+.DS_Store
+share/
+*:Zone.Identifier

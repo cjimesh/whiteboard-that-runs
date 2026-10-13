@@ -1,0 +1,1280 @@
+:root {
+  --bg: #0b0e14;
+  --surface: #141922;
+  --border: #232b39;
+  --text: #dfe5f0;
+  --muted: #8894ab;
+  --accent: #4cc2ff;
+
+  /* Component-state palette: green holds, amber strains, red folds. Fixed here
+     rather than per-renderer so the canvas, gauges and verdict readout all say
+     "folding" in the same colour. */
+  --ok: #4ade80;
+  --strain: #fbbf24;
+  --fold: #f87171;
+
+  color-scheme: dark;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+}
+
+#app {
+  min-height: 100vh;
+}
+
+.wtr-narrow-notice {
+  display: none;
+}
+
+/* R12: desktop-first. Narrow viewports get a plain message, never a squeezed
+   layout — a model that has to be scrolled to be read is not legible at a glance. */
+@media (max-width: 900px) {
+  #app {
+    display: none;
+  }
+
+  .wtr-narrow-notice {
+    display: block;
+    max-width: 34rem;
+    margin: 0 auto;
+    padding: 4rem 1.5rem;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+}
+
+.wtr-boot {
+  display: flex;
+  min-height: 100vh;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  color: var(--muted);
+  text-align: center;
+  line-height: 1.6;
+}
+
+/* ------------------------------------------------------------------ run surface
+
+   Layout goal, from R8: a room reads this from across the table. The canvas gets
+   the space; controls sit under it in one row so the driver's hand goes to the
+   same place every time; readouts sit above it because "is it completing work?"
+   is the question asked most often and should never need hunting for. */
+
+/* Canvas left, parameters right.
+ *
+ * This was a single vertical stack until knobs started arriving, and a stack
+ * spends the canvas to pay for each new control: the first capacity field alone
+ * squeezed the model down to its 150px floor. The picture is the product, so it
+ * holds the height, and the parameters sit beside it in a column that scrolls on
+ * its own. The transport keeps its place directly under the canvas — it is what
+ * a driver reaches for mid-sentence — and the validation panel spans the full
+ * width underneath, because its table needs the room. */
+
+.wtr-run-surface {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(17rem, 24vw, 23rem);
+  /* The canvas row has its floor here, on the track, not only on the element:
+     with the validation table open and change chips under the transport, a
+     track allowed to shrink below the element's floor let the canvas spill over
+     the transport and hide the buttons a driver reaches for. The panel row is the
+     one that gives way — it scrolls on its own. */
+  grid-template-rows: auto auto minmax(340px, 1fr) auto auto minmax(0, auto);
+  grid-template-areas:
+    "stats     stats"
+    "alerts    alerts"
+    "stage     controls"
+    "transport controls"
+    "changes   controls"
+    "panel     panel";
+  column-gap: 20px;
+  row-gap: 14px;
+  min-height: 100vh;
+  padding: 18px 22px 24px;
+}
+
+.wtr-stats { grid-area: stats; }
+
+/* One line, above the picture, saying which component is the cause. It sits
+   between the totals and the model because it is the sentence that connects
+   them: the gauges say something is wrong, the canvas shows where, and this
+   says which of the red boxes started it. */
+.wtr-alerts {
+  grid-area: alerts;
+  display: flex;
+  gap: 24px;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.wtr-alerts:not(:has(.wtr-culprit[data-culprit]:not([data-culprit=""]))):not(:has(.wtr-steered[data-steered="true"])) {
+  display: none;
+}
+
+.wtr-culprit {
+  margin: 0;
+  font-size: 0.86rem;
+  line-height: 1.4;
+  color: var(--fold);
+}
+
+.wtr-culprit:empty {
+  display: none;
+}
+
+/* A reading taken after the model was steered mid-run carries its own history,
+   and says so rather than being quietly reset or quietly trusted. */
+.wtr-steered {
+  margin: 0 0 0 auto;
+  max-width: 27rem;
+  font-size: 0.76rem;
+  line-height: 1.4;
+  color: var(--strain);
+}
+
+.wtr-steered[data-steered="false"] {
+  display: none;
+}
+
+.wtr-stage { grid-area: stage; }
+.wtr-transport { grid-area: transport; }
+.wtr-panel-host { grid-area: panel; }
+
+.wtr-controls {
+  grid-area: controls;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.wtr-stats {
+  display: flex;
+  gap: 30px;
+  align-items: baseline;
+}
+
+.wtr-readout {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wtr-readout-value {
+  font-size: 1.45rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.wtr-readout-label {
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.wtr-stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.wtr-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 380px;
+}
+
+.wtr-transport,
+.wtr-presets {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* In the side column each control is a row of its own: a wrapping horizontal
+   list of knobs makes neighbours jump sideways as notes change length. */
+.wtr-presets {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 18px;
+}
+
+.wtr-preset-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wtr-controls .wtr-field {
+  justify-content: space-between;
+}
+
+.wtr-preset-note {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.wtr-field {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.wtr-field-label {
+  font-size: 0.78rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.wtr-button,
+.wtr-select {
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 7px 13px;
+  cursor: pointer;
+}
+
+.wtr-button:hover,
+.wtr-select:hover {
+  border-color: var(--accent);
+}
+
+.wtr-button-primary {
+  border-color: var(--accent);
+  color: var(--accent);
+  min-width: 5.5rem;
+}
+
+.wtr-slider {
+  width: 15rem;
+  accent-color: var(--accent);
+}
+
+.wtr-slider-value {
+  font-variant-numeric: tabular-nums;
+  min-width: 3.5rem;
+}
+
+/* A stated rate: typed, tabular, and sitting next to its unit. */
+.wtr-number {
+  font: inherit;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+  width: 6rem;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 7px 10px;
+}
+
+.wtr-number:hover,
+.wtr-number:focus {
+  border-color: var(--accent);
+}
+
+.wtr-field-unit {
+  font-size: 0.9rem;
+  color: var(--muted);
+  margin-left: -4px;
+}
+
+/* The arithmetic behind the knob, never hidden from the room. */
+.wtr-conversion {
+  margin: 0;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.wtr-field-error {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--fold);
+}
+
+.wtr-field-error:empty {
+  display: none;
+}
+
+/* ----------------------------------------------------------------------- legend
+
+   Below the controls, not over the canvas: a legend is read once on the way in
+   and should not spend the rest of the session covering the thing it explains. */
+
+.wtr-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.wtr-legend-item {
+  display: flex;
+  gap: 7px;
+  align-items: baseline;
+  line-height: 1.4;
+}
+
+.wtr-legend-item strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.wtr-swatch {
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+  align-self: center;
+  background: var(--muted);
+}
+
+.wtr-swatch-utilization { background: var(--ok); }
+.wtr-swatch-queue { background: var(--accent); }
+.wtr-swatch-ribbon { background: rgba(76, 194, 255, 0.45); }
+.wtr-swatch-drops { background: var(--fold); }
+.wtr-swatch-retries { background: var(--strain); }
+.wtr-swatch-cache { background: #c9a6ff; }
+.wtr-swatch-other-traffic { background: rgba(148, 163, 184, 0.85); }
+
+/* ------------------------------------------------------------ validation panel */
+
+.wtr-validation {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 18px;
+  background: var(--surface);
+}
+
+.wtr-validation-title {
+  margin: 0 0 4px;
+  font-size: 1rem;
+}
+
+.wtr-validation-blurb,
+.wtr-validation-status,
+.wtr-validation-footer {
+  margin: 0 0 10px;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.wtr-validation-status[data-state="pass"] { color: var(--ok); }
+.wtr-validation-status[data-state="fail"],
+.wtr-validation-status[data-state="error"] { color: var(--fold); }
+.wtr-validation-status[data-state="blocked"] { color: var(--strain); }
+
+.wtr-validation-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.wtr-validation-table th {
+  text-align: right;
+  padding: 4px 10px;
+  color: var(--muted);
+  font-weight: 500;
+  border-bottom: 1px solid var(--border);
+}
+
+.wtr-validation-table td {
+  text-align: right;
+  padding: 4px 10px;
+  border-bottom: 1px solid rgba(35, 43, 57, 0.5);
+}
+
+.wtr-validation-table th:first-child,
+.wtr-cell-label {
+  text-align: left;
+}
+
+.wtr-row-ok td:last-child { color: var(--ok); }
+.wtr-row-fail td:last-child { color: var(--fold); }
+
+/* -------------------------------------------------------- breaking-point panel
+
+   Shares the validation panel's frame — same border, same padding — because they
+   are the same kind of thing to a reader: a claim with its evidence under it. The
+   table differs: rates and verdicts are short and the explanation is a sentence,
+   so this one reads left-to-right rather than lining up decimal points. */
+
+.wtr-verdict {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 18px;
+  background: var(--surface);
+}
+
+.wtr-verdict-title {
+  margin: 0 0 4px;
+  font-size: 1rem;
+}
+
+.wtr-verdict-blurb,
+.wtr-verdict-culprit,
+.wtr-verdict-qualifier,
+.wtr-verdict-stale {
+  margin: 0 0 10px;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.wtr-verdict-headline {
+  margin: 0 0 6px;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+/* A bracket is the ordinary answer and reads plain. The other three are all
+   caveats of one kind or another, so they carry the colour. */
+.wtr-verdict-headline[data-headline="holds-beyond"] { color: var(--ok); }
+.wtr-verdict-headline[data-headline="folds-at-floor"],
+.wtr-verdict-headline[data-headline="error"] { color: var(--fold); }
+.wtr-verdict-headline[data-headline="no-threshold"] { color: var(--strain); }
+
+.wtr-verdict-stale[data-stale="false"] { display: none; }
+.wtr-verdict-stale[data-stale="true"] { color: var(--strain); }
+
+.wtr-verdict-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.wtr-verdict-table th {
+  text-align: left;
+  padding: 4px 10px 4px 0;
+  color: var(--muted);
+  font-weight: 500;
+  border-bottom: 1px solid var(--border);
+}
+
+.wtr-verdict-table td {
+  text-align: left;
+  padding: 4px 10px 4px 0;
+  border-bottom: 1px solid rgba(35, 43, 57, 0.5);
+}
+
+/* The one row that did not run on the design's own arrival stream, set off so it
+   is not read as the search contradicting itself. */
+.wtr-verdict-table tr[data-confirmation="true"] td {
+  border-top: 1px solid var(--border);
+}
+
+.wtr-verdict-table tr[data-confirmation="true"] .wtr-cell-label::after {
+  content: " ↻";
+  color: var(--muted);
+}
+
+/* Arms of a comparison, stacked. Each one keeps its own claim next to its own
+   probes, because the evidence for "the proposal holds to 71/s" is the probes for
+   the proposal, and a single merged table would make the reader sort them out. */
+
+.wtr-verdict-arm + .wtr-verdict-arm {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.wtr-verdict-arm-title {
+  margin: 0 0 4px;
+  font-size: 0.86rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.wtr-verdict-arm-line {
+  margin: 0 0 6px;
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+
+.wtr-verdict-probes > summary {
+  cursor: pointer;
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.wtr-verdict-arm[data-result="error"] .wtr-verdict-arm-line { color: var(--fold); }
+.wtr-verdict-arm[data-result="no-threshold"] .wtr-verdict-arm-line { color: var(--strain); }
+
+/* The live baseline switch. Segmented, because the two are one choice and a pair
+   of ordinary buttons would read as two independent actions. */
+
+/* ---------------------------------------------------------------- the tour
+
+   First in the control column, next to the controls it names — a viewer who has
+   just opened the file is looking at the picture, and the first thing to their
+   right should tell them what to touch. Set apart by ground rather than by a
+   border, so it reads as a note rather than as another panel of controls. */
+
+.wtr-guidance[data-guidance="dismissed"] { display: none; }
+
+.wtr-guidance {
+  background: var(--surface);
+  border-left: 2px solid var(--accent);
+  border-radius: 0 6px 6px 0;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wtr-guidance-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.wtr-guidance-title {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.wtr-guidance-dismiss {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.wtr-guidance-dismiss:hover { color: var(--text); }
+
+.wtr-guidance-intro {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.wtr-guidance-steps {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.wtr-guidance-step::marker { color: var(--accent); }
+
+.wtr-guidance-action { display: block; }
+
+.wtr-guidance-watch { color: var(--muted); }
+
+.wtr-arm-error {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--fold);
+}
+
+.wtr-arm-toggle {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.wtr-arm-toggle .wtr-button[data-selected="true"] {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.wtr-arm-toggle .wtr-button[data-selected="false"] {
+  opacity: 0.65;
+}
+
+/* A disputed range sits under the field it disputes, so the pair reads as one
+   thing an author is unsure about rather than two more parameters. */
+
+.wtr-dispute-range {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+/* An aside on a field, not an action on the model. Full-width it looked like the
+   most important control in the inspector, once per numeric parameter. */
+.wtr-dispute-toggle {
+  align-self: flex-start;
+  width: auto;
+  font-size: 0.72rem;
+  padding: 2px 8px;
+  opacity: 0.75;
+}
+
+.wtr-dispute-toggle[data-disputed="true"] {
+  opacity: 1;
+}
+
+.wtr-button[data-disputed="true"] {
+  border-color: var(--strain);
+  color: var(--strain);
+}
+
+/* The verdict word carries the colour here, not the trailing sentence. */
+.wtr-verdict-table .wtr-row-ok td:last-child,
+.wtr-verdict-table .wtr-row-fail td:last-child { color: inherit; }
+.wtr-verdict-table .wtr-row-ok td:nth-child(2) { color: var(--ok); }
+.wtr-verdict-table .wtr-row-fail td:nth-child(2) { color: var(--fold); }
+
+/* The surface owns the viewport and the canvas takes what is left, so the
+   controls are always reachable without scrolling — a driver hunting for the
+   load slider mid-sentence is a broken demo. The validation panel gets its own
+   bounded, scrollable region for the same reason. */
+
+.wtr-run-surface {
+  height: 100vh;
+  overflow: hidden;
+}
+
+.wtr-canvas {
+  min-height: 0;
+}
+
+/* A floor the picture never goes below. The controls have their own scroll, so
+   a long parameter list can no longer eat the model. */
+.wtr-stage {
+  min-height: 340px;
+}
+
+.wtr-panel-host:not(:empty) {
+  min-height: 0;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.wtr-preset-note {
+  font-size: 0.76rem;
+}
+
+/* ------------------------------------------------------------------- editor
+
+   Same shape as the run surface on purpose: canvas left, panels right, one
+   header. Moving between the two should feel like the same room with different
+   controls, not two applications. */
+
+.wtr-editor-surface {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(19rem, 27vw, 26rem);
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    "header   header"
+    "hint     controls"
+    "stage    controls"
+    "problems controls";
+  column-gap: 20px;
+  row-gap: 12px;
+  height: 100vh;
+  overflow: hidden;
+  padding: 18px 22px 24px;
+}
+
+.wtr-editor-header {
+  grid-area: header;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.wtr-editor-surface .wtr-hint { grid-area: hint; }
+.wtr-editor-surface .wtr-stage { grid-area: stage; min-height: 320px; }
+.wtr-editor-surface .wtr-problems { grid-area: problems; }
+.wtr-editor-surface .wtr-controls { grid-area: controls; }
+
+.wtr-name {
+  font: inherit;
+  font-size: 1.05rem;
+  flex: 1 1 auto;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 8px 12px;
+}
+
+.wtr-name:hover,
+.wtr-name:focus {
+  border-color: var(--accent);
+}
+
+/* The file input is the label's own hit area; a visible input adds a second
+   control that does the same thing and looks broken next to a button row. */
+.wtr-file {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.wtr-hint {
+  margin: 0;
+  min-height: 1.2em;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.wtr-hint[data-hint="wiring"] {
+  color: var(--accent);
+}
+
+.wtr-palette-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Name and kind on one line: the name is what everything else refers to, the kind
+   is what explains the fields underneath. Neither is a subtitle of the other. */
+.wtr-panel-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.wtr-panel-kind {
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  border-radius: 3px;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+
+.wtr-panel-title {
+  margin: 0;
+  font-size: 0.78rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.wtr-panel-subtitle {
+  margin: 12px 0 6px;
+  font-size: 0.74rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.wtr-palette,
+.wtr-inspector,
+.wtr-load {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.wtr-inspector-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.wtr-button-small {
+  padding: 3px 8px;
+  font-size: 0.78rem;
+  min-width: 0;
+}
+
+.wtr-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  border-color: var(--border);
+}
+
+.wtr-wire-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.85rem;
+}
+
+.wtr-wire-item {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Other traffic: a name, a rate and a way to take it off, on one line.
+   `min-width: 0` on the name is what stops a long default name from pushing the
+   rate field and the remove button off the edge of the column — a flex item's
+   default minimum is its content, and the first drawing clipped both. */
+.wtr-traffic-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.wtr-name-small {
+  font-size: 0.85rem;
+  padding: 6px 9px;
+  min-width: 0;
+}
+
+/* Sized to its label, not to the column. A full-width button in this panel
+   outweighs every real control beside it — the same mistake the dispute toggle
+   made and had corrected. */
+.wtr-traffic-add {
+  align-self: flex-start;
+}
+
+.wtr-load-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 0.85rem;
+}
+
+.wtr-number-small {
+  width: 4.5rem;
+}
+
+/* A dependency call: the name, the count and its timeout and retries on one
+   line, and the sentence saying what they do on its own line beneath. Without
+   the wrap the sentence was squeezed into whatever width the fields left, and
+   the row stood 280 px tall. */
+.wtr-call-item {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  row-gap: 4px;
+}
+
+.wtr-call-description {
+  flex-basis: 100%;
+}
+
+.wtr-call-setting {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.wtr-call-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+/* Problems sit under the canvas rather than beside the control that caused
+   them: a model is refused as a whole, and the author needs to see the list. */
+.wtr-problems {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 22vh;
+  overflow-y: auto;
+}
+
+.wtr-problem-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--strain);
+}
+
+.wtr-file-message {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+/* --------------------------------------------------------- question-first editor
+
+   The editor asks in the author's words, so its controls look like answers to
+   questions rather than a form: choices are cards you pick one of, guesses are
+   marked in the warning colour, and the sentence each group adds up to ("Can
+   serve about 1,000 a second") is the largest text in the panel. */
+
+.wtr-editor-surface .wtr-stage {
+  position: relative;
+}
+
+/* Start from: over the canvas, because a new shape replaces what is on it. */
+.wtr-chooser[data-chooser="closed"] {
+  display: none;
+}
+
+.wtr-chooser[data-chooser="open"] {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 28px;
+  overflow-y: auto;
+  background: rgba(11, 14, 20, 0.96);
+}
+
+.wtr-chooser-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.wtr-chooser-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: 12px;
+}
+
+.wtr-shape {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.wtr-shape:hover {
+  border-color: var(--accent);
+}
+
+.wtr-shape span {
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+/* The arrow's question and its answers. */
+.wtr-question {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.wtr-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wtr-choice {
+  padding: 9px 12px;
+  text-align: left;
+  font: inherit;
+  font-size: 0.86rem;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.wtr-choice:hover {
+  border-color: var(--accent);
+}
+
+.wtr-choice[data-selected="true"] {
+  border-color: var(--accent);
+  box-shadow: inset 3px 0 0 var(--accent);
+  background: rgba(76, 194, 255, 0.08);
+}
+
+/* What a group of answers adds up to: said, never typed, and the thing to read. */
+.wtr-capacity {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+
+/* Under a field: how much its number is known, and whether it is disputed. */
+.wtr-field-tools {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.wtr-chip {
+  font: inherit;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+/* A guess is the one state that should catch the eye. */
+.wtr-chip[data-provenance="assumed"] {
+  border-color: var(--strain);
+  color: var(--strain);
+}
+
+.wtr-chip[data-provenance="measured"] {
+  border-color: var(--ok);
+  color: var(--ok);
+}
+
+.wtr-details {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.wtr-details[open] {
+  gap: 14px;
+}
+
+.wtr-details-summary {
+  cursor: pointer;
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.wtr-details[open] > .wtr-details-summary {
+  margin-bottom: 10px;
+}
+
+.wtr-details[data-section="assumptions"] > .wtr-details-summary {
+  color: var(--strain);
+}
+
+.wtr-assumption-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wtr-assumption {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.82rem;
+}
+
+/* A way into something else, not an action on this: reads as a link. */
+.wtr-link {
+  padding: 0;
+  font: inherit;
+  font-size: 0.84rem;
+  text-align: left;
+  color: var(--accent);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.wtr-link:hover {
+  text-decoration: underline;
+}
+
+.wtr-problem-note {
+  margin: 0;
+  padding: 8px 10px;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--strain);
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  border-radius: 8px;
+}
+
+.wtr-name-heading {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+/* ----------------------------------------------------------- steering by box
+
+   Each component's knobs in one section, closed until its box is clicked or it
+   folds first. The room's question is nearly always about one box, and a column
+   of every knob for every box is a column nobody can scan mid-sentence. */
+
+.wtr-steer-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wtr-steer {
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+}
+
+.wtr-steer[open] {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+}
+
+.wtr-steer-summary {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 9px 12px;
+  cursor: pointer;
+  font-size: 0.86rem;
+}
+
+.wtr-steer-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 4px 12px 12px;
+}
+
+/* What was changed while running, as chips under the canvas. */
+.wtr-changes {
+  grid-area: changes;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wtr-changes:empty {
+  display: none;
+}
+
+.wtr-change {
+  padding: 3px 10px;
+  font-size: 0.76rem;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+}
+
+.wtr-run-surface .wtr-stage {
+  position: relative;
+}
+
+.wtr-steer-card {
+  display: none;
+}
+
+/* --------------------------------------------------------------- present mode
+
+   For a shared screen: the canvas takes the width, the numbers get big enough to
+   read from the back of the room, and the only knobs on screen are the selected
+   box's, beside it. */
+
+.wtr-run-surface[data-mode="present"] {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(340px, 1fr) auto auto minmax(0, auto);
+  grid-template-areas:
+    "stats"
+    "alerts"
+    "stage"
+    "transport"
+    "changes"
+    "panel";
+}
+
+.wtr-run-surface[data-mode="present"] .wtr-controls {
+  display: none;
+}
+
+.wtr-run-surface[data-mode="present"] .wtr-readout-value {
+  font-size: 2.1rem;
+}
+
+.wtr-run-surface[data-mode="present"] .wtr-culprit {
+  font-size: 1.05rem;
+}
+
+.wtr-run-surface[data-mode="present"] .wtr-steer-card[data-card="open"] {
+  position: absolute;
+  z-index: 2;
+  display: block;
+  width: 300px;
+  max-height: calc(100% - 16px);
+  overflow-y: auto;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  border-radius: 10px;
+}
+
+.wtr-run-surface[data-mode="present"] .wtr-transport .wtr-presets {
+  flex-wrap: nowrap;
+}
+
+/* No tour on a model somebody drew; an empty card is a stray bar. */
+.wtr-guidance:empty {
+  display: none;
+}
+
+/* In Present mode the demo's policy controls ride in the bottom strip: one line,
+   no explanations, so they do not take height from the canvas. */
+.wtr-run-surface[data-mode="present"] .wtr-transport .wtr-presets {
+  display: flex;
+  flex-direction: row;
+  gap: 18px;
+  align-items: center;
+}
+
+.wtr-run-surface[data-mode="present"] .wtr-transport .wtr-preset-note {
+  display: none;
+}

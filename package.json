@@ -1,0 +1,26 @@
+{
+  "name": "whiteboard-that-runs",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A system-design canvas where the diagram runs: model a system, put it under load, watch where it folds.",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "audit": "npm audit",
+    "package": "npm run build && node scripts/package.ts",
+    "capture": "npm run build && node scripts/capture-demo.ts"
+  },
+  "devDependencies": {
+    "happy-dom": "^20.11.2",
+    "playwright": "^1.62.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.1",
+    "vite-plugin-singlefile": "^2.3.3",
+    "vitest": "^4.1.10"
+  }
+}
