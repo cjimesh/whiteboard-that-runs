@@ -27,35 +27,26 @@ The app opens on a running example system with a five-step tour beside it.
 
 ## Drawing your own
 
-Choose **Edit model**, then **New…** to start from a common shape (app servers and a database, a
-cache in front of a database, app servers sharing an in-memory store, or a queue and workers) or from
-a blank canvas. Undo restores whatever was there before.
-
-The palette lists components by what they are: load balancer, app server, database, in-memory store,
-cache, queue and workers, and session pool. Each one comes with sensible behaviour for its kind, such
-as how many connections it has or whether it keeps a slot after answering, so you answer questions
-about your system instead of choosing simulation mechanisms. Each box asks two questions, **How many
-at once?** and **How long does one take?**, and shows the capacity they imply ("Can serve about 1,000
-a second"). Everything else is under **Details**.
-
-To connect two boxes, select one, choose **Sends requests to…**, and click the other, or drag from
-one box to the other. Every arrow has an arrowhead showing which way requests flow, and **Flip
-direction** reverses an arrow drawn the wrong way round. Clicking an arrow asks **What does app-1 do
-with db-1?**: it can pass the request on and wait, pass it on and move on, or ask something along the
-way. If it waits, the arrow also asks how long to wait before giving up and how many times to retry.
-Timeouts and retries are set on arrows because they belong to a call between two components.
-
-Every number starts as **assumed**, and the box and a list of guesses both say so. Typing a value
-marks it as stated, and one more click marks it as measured. Because the tool only claims to compute
-the consequences of its inputs, keeping track of which inputs are guesses is part of the model.
-
-While a model runs, click a box to steer it. Its controls open and the others close, and the
-component that fails first opens on its own. Each live change appears as a chip under the canvas.
-**Present** prepares the screen for a meeting room, with the canvas at full width, large figures, and
-the selected box's controls beside it.
-
-If you close or reload the page with changes you have not saved, the browser asks first. **Save**
-downloads the model as a `.whiteboard.json` file, and **Open…** loads one back.
+- **Start a model.** Choose **Edit model**, then **New…**. Pick a common shape (app servers and a
+  database, a cache in front of a database, app servers sharing an in-memory store, or a queue and
+  workers) or a blank canvas. Undo restores what was there before.
+- **Add components** from the palette: load balancer, app server, database, in-memory store, cache,
+  queue and workers, or session pool. Each one comes with behaviour suited to its kind.
+- **Answer two questions per box:** **How many at once?** and **How long does one take?** The box
+  shows the capacity they imply, for example "Can serve about 1,000 a second". Everything else is
+  under **Details**.
+- **Connect boxes.** Select a box, choose **Sends requests to…**, and click the box it sends to, or
+  drag from one to the other. Arrowheads show the direction, and **Flip direction** reverses an arrow.
+- **Say what an arrow means.** Click it and choose whether the sender passes the request on and
+  waits, passes it on and moves on, or asks something along the way. Timeouts and retries are set on
+  the arrow as well.
+- **Mark what you know.** Every number starts as **assumed**. Typing a value marks it as stated, and
+  one more click marks it as measured.
+- **Run and steer.** Press **Run ▸**, then click a box to open its controls. The component that fails
+  first opens on its own, and each change appears as a chip under the canvas.
+- **Present** shows the canvas at full width with large figures, for a meeting room.
+- **Save and open.** **Save** downloads the model as a `.whiteboard.json` file, and **Open…** loads
+  one back. The browser asks before you close the page with unsaved changes.
 
 ## The demo
 
@@ -214,27 +205,3 @@ npm audit
 Out of scope from the start: circuit breakers and bulkheads, rate limiting, retry budgets and token
 buckets, scatter-gather with a join, cache TTL and key space, autoscaling, and network latency on a
 wire. Arrows take no time, so anything that costs time has to be drawn as a component.
-
-## Working on it
-
-```
-npm test                           # all tests
-npm run test:watch
-npm run build                      # type-check and single-file build
-npm run capture                    # docs/demo-*.png; also checks the demo still collapses and recovers
-node scripts/capture-verdict.ts    # docs/verdict-*.png
-node scripts/capture-comparison.ts # docs/compare-*.png
-node scripts/capture-traffic.ts    # docs/traffic-*.png
-node scripts/capture-calls.ts      # docs/calls-*.png
-node scripts/capture-ux.ts         # docs/ux-*.png: the editor's questions, a run, Present mode
-npm run package                    # share/<name>-<date>.zip
-```
-
-The screenshots in `docs/` are visual checks that a test cannot make. Every capture runs against the
-built `dist/index.html` over `file://`, so the screenshots show the same file a recipient would open.
-
-## Status
-
-All eight planned units are built and passing, along with leases, shared dependencies, other traffic
-on a shared component, timeouts and retries on dependency calls, and a question-first editor with a
-Present mode. The remaining gaps are listed under **What it can't model yet**.
