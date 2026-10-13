@@ -28,17 +28,26 @@ are correct, and it is not a capacity planner for a production system.
 
 ## Try it
 
-The quickest way is the [hosted copy](https://cjimesh.github.io/whiteboard-that-runs/), rebuilt from
-`main` on every push. To build it yourself:
+Open **https://cjimesh.github.io/whiteboard-that-runs/**. It opens on a running example system with
+a short tour beside it.
 
-```
-npm install
-npm run build      # produces dist/index.html, a single self-contained file
-```
+## Saving and opening
 
-Open `dist/index.html` directly from disk. The app opens on a running example system with a short
-tour beside it. `npm run dev` starts a development server, and `npm run package` produces a zip to
-send to someone.
+Nothing is stored on the site, and there is no account. A model lives in a file on your computer.
+
+- **Save** downloads the model as a `.whiteboard.json` file, including its load pattern and any
+  changes you kept from a run.
+- **Open…** loads a saved file back. To share a model, send the file; the other person opens it at
+  the same link.
+- The browser warns before you close the page with unsaved changes. If you close it anyway, they are
+  gone.
+- The file is plain, indented JSON, so it can sit in a repository next to the design document it
+  supports.
+
+## Using it offline
+
+The whole app is one file. In your browser, choose **Save page as…** and pick **Webpage, HTML only**.
+The saved file runs from disk with no connection, and works the same as the hosted copy.
 
 ## What you can do
 
@@ -79,11 +88,9 @@ send to someone.
   first opens on its own.
 - **Keep what the room agreed.** Changes made during a run are experiments and leave the model alone.
   When one becomes the design, press **Keep these changes** (on any run started from the editor;
-  the opening tour does not offer it). The run's settings are copied into the
-  model, every number that moved is marked as stated, and **Save** writes them to the file. Undo in
-  the editor takes them back.
-- **Save and open.** **Save** downloads the model as a `.whiteboard.json` file, and **Open…** loads
-  one back. The browser asks before you close the page with unsaved changes.
+  the opening tour does not offer it). The run's settings are copied into the model, every number
+  that moved is marked as stated, and **Save** writes them to the file. Undo in the editor takes
+  them back.
 
 ## Load patterns
 
@@ -210,6 +217,11 @@ You can verify this:
 Out of scope by design: circuit breakers and bulkheads, rate limiting, retry budgets and token
 buckets, scatter-gather with a join, cache TTL and key space, autoscaling, and network latency on a
 wire. Arrows take no time, so anything that costs time has to be drawn as a component.
+
+## Building from source
+
+`npm install`, then `npm run build` produces `dist/index.html`. `npm test` runs the full suite,
+including the browser checks behind the no-network claim.
 
 ## License
 
