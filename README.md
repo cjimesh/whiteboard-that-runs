@@ -1,212 +1,201 @@
 # Whiteboard That Runs
 
-A system-design canvas where the diagram runs. You draw a system from a handful of components, give
-each one its numbers, put load through it, and watch where it fails. It is meant to be used live in a
-design review, while the design is still being argued about.
+**A system-design diagram you can put load through.** Draw the system under discussion, give each box
+two numbers, and watch which component fails first. Change a timeout, a retry policy, or the shape
+of the traffic while it runs, and the whole room sees the consequence within seconds.
 
-The tool computes the consequences of the numbers you give it. It does not check that those numbers
-are right, and it is not a capacity planner, so it cannot tell you what your production system will
-do. It can tell you what a system with these properties would do, which is usually the question a
-design review is trying to settle.
+[![The demo system under spiky load: it collapses into a retry storm, recovers when retries are switched off, then runs a load pattern typed as a formula.](docs/demo.gif)](docs/demo.mp4)
 
-Everything runs in the browser. The application is a single HTML file whose content-security policy
-blocks every network destination, so a model stays on the machine it was drawn on.
+*Thirty seconds of the built-in demo. Spiky traffic that averages 26 requests a second, half of what
+the database can handle, sends the system into a retry storm it does not recover from on its own. Switching retries off
+brings it back with the spikes still arriving. The last part runs a load pattern typed as a formula.
+[Full-resolution video](docs/demo.mp4).*
 
-![The demo in a retry storm: load is under the database's capacity, yet nothing completes, and the database is marked as the component that failed first.](docs/demo-2-retry-storm.png)
+## Why it exists
 
-*The demo at 44 requests a second. The database can handle about fifty, but retries push it over and
-nothing completes. Turning retries off brings it back without a restart.*
+Design reviews argue about numbers: how many connections the pool needs, whether three retries is
+too many, what happens when traffic doubles for a minute. The consequences of those numbers are
+non-linear and hard to reason about at a whiteboard. In the built-in demo, a retry policy that is
+harmless at 22 requests a second takes the system to zero throughput at 44, against a database that
+handles 50. The component that turns red is often the victim of the one that failed.
+
+This tool runs the diagram so the review can see those consequences instead of estimating them. It
+computes what a system with the stated properties would do. It does not check that the properties
+are correct, and it is not a capacity planner for a production system.
 
 ## Try it
 
 ```
 npm install
-npm run build      # produces dist/index.html, one self-contained file
+npm run build      # produces dist/index.html, a single self-contained file
 ```
 
-Open `dist/index.html` directly from disk; running over `file://` is fully supported. You can also
-use `npm run dev` for a development server, or `npm run package` to produce
-`share/whiteboard-that-runs-<date>.zip` to send to someone.
+Open `dist/index.html` directly from disk. The app opens on a running example system with a short
+tour beside it. `npm run dev` starts a development server, and `npm run package` produces a zip to
+send to someone.
 
-The app opens on a running example system with a five-step tour beside it.
+## What you can do
+
+- **Draw a system** from load balancers, app servers, databases, in-memory stores, caches, queues
+  with workers, and session pools. Each box asks two questions, **How many at once?** and **How
+  long does one take?**, and shows the capacity they imply.
+- **Run it and steer it live.** Drag the load, change a timeout, switch a retry policy, or turn off
+  another team's traffic. Each change applies to the running simulation without a restart and
+  appears as a chip under the canvas, and the whole session can be replayed exactly.
+- **Shape the traffic.** Choose steady, spiky, or random load, or type a formula of your own. See
+  [Load patterns](#load-patterns).
+- **Find the breaking point.** One button brackets the sustained rate the design holds to, names
+  the component where the trouble starts, and says so when a design has no clean threshold.
+- **Compare a proposal.** Mark the components this month's proposal adds and get the breaking point
+  with and without them, on identical traffic.
+- **Check it against the textbook.** **Why trust this?** runs the same queueing-theory checks as the
+  test suite, on screen.
+- **Present it.** **Present** shows the canvas at full width with large figures for a meeting room.
+- **Keep it private.** The page makes no network requests, so a model of a real system stays on the
+  machine it was drawn on.
 
 ## Drawing your own
 
 - **Start a model.** Choose **Edit model**, then **New…**. Pick a common shape (app servers and a
   database, a cache in front of a database, app servers sharing an in-memory store, or a queue and
   workers) or a blank canvas. Undo restores what was there before.
-- **Add components** from the palette: load balancer, app server, database, in-memory store, cache,
-  queue and workers, or session pool. Each one comes with behaviour suited to its kind.
-- **Answer two questions per box:** **How many at once?** and **How long does one take?** The box
-  shows the capacity they imply, for example "Can serve about 1,000 a second". Everything else is
-  under **Details**.
+- **Answer two questions per box.** **How long does one take?** is the component's own work,
+  excluding time spent waiting on anything downstream. Everything else is under **Details**.
 - **Connect boxes.** Select a box, choose **Sends requests to…**, and click the box it sends to, or
   drag from one to the other. Arrowheads show the direction, and **Flip direction** reverses an arrow.
 - **Say what an arrow means.** Click it and choose whether the sender passes the request on and
   waits, passes it on and moves on, or asks something along the way. Timeouts and retries are set on
-  the arrow as well.
+  the arrow.
 - **Mark what you know.** Every number starts as **assumed**. Typing a value marks it as stated, and
   one more click marks it as measured.
 - **Run and steer.** Press **Run ▸**, then click a box to open its controls. The component that fails
-  first opens on its own, and each change appears as a chip under the canvas.
-- **Present** shows the canvas at full width with large figures, for a meeting room.
+  first opens on its own.
 - **Save and open.** **Save** downloads the model as a `.whiteboard.json` file, and **Open…** loads
   one back. The browser asks before you close the page with unsaved changes.
 
-## The demo
+## Load patterns
 
-The demo is a load balancer, two application replicas, and one database. Each of its numbers is one
-a reviewer would accept: 2 ms of application work, a 250 ms timeout, three retries with backoff, and
-a database that handles about fifty requests a second.
+The **Pattern** menu next to the load slider sets how the load moves over time. The slider stays the
+number being discussed, and the pattern describes the traffic around it.
 
-If you drag the load to 44 requests a second, which is below the database's capacity, goodput falls
-to zero. Nothing is under-provisioned; the retries cause the collapse. Turning retries off restores
-most of the throughput within seconds, live, without restarting anything.
+| Pattern | What it does | Settings |
+| --- | --- | --- |
+| **Steady** | The slider's rate, all the time. | None |
+| **Spiky** | The slider's rate, with a burst at the end of every period. | Spike height (× the load), how long it lasts, how often it comes |
+| **Random** | A new rate every few seconds, drawn evenly within a band around the slider. It averages to the slider's rate. | Swing (±%), how long each rate holds |
+| **Formula** | Any rate you can write as a function of time. | The formula |
 
-These claims are covered by tests. `src/ui/demo.test.ts` checks that the resting load holds steady
-across three seeds, that 44 requests a second does collapse, and that the recovery described in the
-tour is the recovery the model produces, including the fact that it is only partial.
+Under the settings, a line states the average and peak rate the pattern produces over the next hour.
+Patterns follow simulation time since the run started, so dragging the slider during a spiky run
+changes the height of the spikes and leaves their timing alone. Random load comes from the run's seed,
+so **Rerun clean** and a replay see the same traffic.
 
-The demo is also available as a file. `fixtures/demo-system.json` opens in the editor, and a test
-checks that it is byte-for-byte the model the app runs.
+### Writing a formula
 
-## Does the simulator agree with the textbook?
+A formula gives requests per second at time `t`, in seconds since the run started. `base` is the
+slider's value. The formula is read once a second, and a negative result counts as no traffic.
 
-Press **Why trust this?** to run the same closed-form checks as the test suite, at the same budget:
-M/M/1 mean latency against `1/(μ−λ)` for ρ from 0.5 to 0.95, M/M/c against Erlang C up to c = 8, and
-Little's Law at every node. The on-screen panel and CI share one code path, so the figures shown in a
-meeting come from the same run the tests use.
+| Shape | Formula |
+| --- | --- |
+| A wave around the slider, once a minute | `base * (1 + 0.5 * sin(2 * pi * t / 60))` |
+| A step to double the load after a minute | `t < 60 ? base : base * 2` |
+| A two-second burst every thirty seconds | `t % 30 < 2 ? base * 4 : base` |
+| A ramp from zero to the slider over two minutes | `base * min(1, t / 120)` |
+| Square waves between two levels | `t % 40 < 20 ? base : base * 1.8` |
 
-The budget is fixed in advance: 10⁶ completions per point, with a warm-up sized from each point's own
-relaxation time. At 10⁵ completions, whether a ±5% check passed depended on the seed. The one wider
-tolerance (±12% at ρ = 0.95) has a written justification, and a structural test requires the same of
-any future change.
+The language supports numbers, `t`, `base`, `pi` and `e`; the operators `+ - * / %` and `^` (or `**`)
+for powers; comparisons, `&&`, `||`, `!` and `condition ? a : b`; and the functions `sin`, `cos`,
+`tan`, `abs`, `min`, `max`, `floor`, `ceil`, `round`, `sqrt`, `exp`, `log` and `pow`. A `Math.` prefix
+is accepted, so a formula copied from JavaScript still works.
 
-Three self-check tests confirm that the suite can fail: an M/D/1 queue presented as M/M/1, a wrong
-server count, and a bounded queue checked against the unbounded formula.
+Formulas are parsed by the app itself and are never executed as code. The page's security policy
+forbids evaluating code, and a formula can only compute a number. A formula that produces a value
+that is not a number, or a rate more than ten times the slider's maximum, is refused with the time at
+which it happens, and the run keeps the load it had.
 
-## Leases
+**Breaking point** is unaffected by the pattern. It always measures sustained steady rates, so its
+answer means the same thing whichever pattern is on screen.
 
-A component can keep its slot after it has answered. A resource pool behaves this way: a request
-claims a resource, gets a reply within seconds, and the resource stays allocated for minutes until a
-different request releases it.
+## Modelling reference
 
-This matters because every other component frees its capacity as soon as work leaves it. A pool
-modelled that way looks idle even when it is the only real constraint. Set **Holds its slot** and a
-**Hold time**, and capacity is then calculated from the hold time instead of the work time, for
-example `11/s ⇒ held for 90 s × 1000 connections`.
+**Hand-offs and calls.** An arrow is either a hand-off or a call. Work travels along a hand-off and
+continues from there. A call is a request the component makes and waits on, holding its own slot
+until the answer arrives. Calls let a shared dependency such as a Redis instance or a primary
+database be drawn once and called from many places, so its callers slow down together, as they do in
+production. A component hands work on to exactly one place; any further arrows out of it are calls,
+each with a count of calls per request. Calls are drawn as dashed ribbons.
 
-A lease is modelled as an M/M/c server whose service time is the hold, with the caller released
-early. It is therefore checked against Erlang C like everything else, and the validation panel runs
-those checks on screen.
+**Timeouts and retries on a call.** Click a call and, under **If it is slow**, set a timeout and a
+number of retries. An attempt the caller gives up on is abandoned but not cancelled: it stays queued
+or in progress at the dependency while the retry joins the queue behind it. That duplicate work is
+what drives a retry storm. Calls with a policy get a live control on the run screen.
 
-## Shared dependencies
+**Leases.** Some components keep their slot after answering. A connection or session pool is the
+usual case: a request claims a resource, gets a reply in seconds, and the resource stays allocated for
+minutes. Set **Holds its slot** and a **Hold time**, and capacity is calculated from the hold time.
 
-An arrow is either a **hand-off** or a **call**. Work travels along a hand-off and continues from
-there. A call is a request the component makes and waits on, holding its own slot until the answer
-arrives.
+**Other traffic.** A shared component usually serves more than the path being modelled. Select a
+component with nothing wired out of it, such as a datastore or a cache, choose **Add other traffic**,
+and give it a name and a rate. That traffic occupies the component's servers, queue and lease, and is
+kept out of the whole-path totals. Its rate is a live control, so "what if the batch job were not
+running" takes one keystroke during a run.
 
-This distinction allows a Redis instance, a shared primary database, or a token service to be drawn
-once and called from many places. The alternative, folding its latency into each caller's own work
-time, hides the fact that the callers share a server and slow down together, which is usually how
-such systems fail. Drawing it behind a single caller understates its load by however many callers
-were left out.
+**Proposals and disputed numbers.** Mark components as part of **this month's proposal** to get the
+breaking point with and without them. Mark a number as **disputed** to get the answer across its
+range. A difference smaller than the sweep's resolution is reported as no improvement.
 
-A component can have as many dependencies as it needs, but it hands work on to exactly one place.
-A second arrow out of a component is therefore a call, with a count of calls per request, because a
-request that reaches Redis twenty times puts twenty times the traffic on it. Dependencies are drawn
-as dashed ribbons, since work does not travel through them and continue on the other side.
+## How the answers are checked
 
-Fan-out with a join, meaning several successors with a wait for all of them, is not supported yet.
+**The simulator agrees with queueing theory.** **Why trust this?** runs M/M/1 mean latency against
+`1/(μ−λ)` for utilisation from 0.5 to 0.95, M/M/c against Erlang C up to eight servers, and Little's
+Law at every node. The on-screen panel and the test suite share one code path and one budget: 10⁶
+completions per point, with a warm-up sized from each point's relaxation time. Three self-check tests
+confirm the suite can fail, by presenting it with an M/D/1 queue, a wrong server count, and a bounded
+queue checked against the unbounded formula.
 
-## Other traffic
+**Breaking point reports a range.** The sweep runs in a background worker at a series of steady rates
+until it has bracketed the rate at which the system stops holding, for example "Holds to ~26/s. Folds
+by 27.5/s." It stops at an 8% gap, the detector's measured resolution. It then re-runs the holding
+rate on a different arrival stream; if that run fails, the readout says the design has no clean
+threshold instead of quoting a number. It refuses a model it cannot sweep in a few seconds and shows
+the calculation behind the refusal.
 
-Shared components usually serve more than the path being modelled. Select a component with nothing
-wired out of it, such as a datastore or a cache, and choose **Add other traffic** to give it a name
-and a rate for the load it already carries. Other traffic is not a component and is not wired to
-anything; on the canvas it arrives on a short stub below the box.
+**The demo's claims are tests.** `src/ui/demo.test.ts` checks that the resting load holds across
+three seeds, that 44 requests a second collapses, and that the recovery the tour describes is the
+recovery the model produces. `scripts/capture-video.ts` checks the same arc while recording the
+video above, and fails if the collapse or the recovery does not happen.
 
-These requests occupy the component's servers, its queue, and its lease, and then stop. They do not
-travel further or call the component's dependencies, because the model only knows what the
-component does for the modelled path. For the same reason, a component that hands work on cannot
-carry other traffic. Other traffic is also kept out of the whole-path totals, since your requests and
-another team's cache reads are not samples of the same latency. It is counted against its own rate,
-so traffic being turned away at the door shows up instead of looking like an absence of contention.
+## No network access
 
-Other traffic is a live control, so a question such as "what if the batch job weren't running" takes
-one keystroke during a run. Changing it does not alter any arrival on the modelled path; only the
-contention changes.
-
-## Retries on a dependency call
-
-A dependency call has its own timeout and retry count, set on the arrow next to the number of calls
-per request. Click the arrow and, under **If it is slow**, enter a timeout in milliseconds and a
-number of retries; a sentence below them describes what the call will now do. These settings belong
-to the call because that is where they live in a real system. "Every Redis read is retried once on
-timeout" is a setting of the Redis client, and the component using it may treat its other
-dependencies differently.
-
-When a caller gives up on an attempt, the attempt is abandoned but not cancelled. It stays at the
-dependency, queued or in progress, while the retry joins the queue behind it. On a single-threaded
-dependency at 80% load, one retry on a 10 ms timeout doubles the work it is asked to do and takes the
-path from serving every request to serving none. Without the retry, the same timeout gives up on
-as many calls as M/M/1 predicts. Calls with a policy get a live control on the run screen, so
-a change such as "stop retrying Redis" takes one keystroke mid-run, and it can be replayed.
-
-## Breaking point
-
-Press **Breaking point**. The model runs in a background worker at a series of steady rates until
-it has bracketed the rate at which the system stops holding, while the live view keeps running.
-
-Several properties of the answer are intentional:
-
-- **The answer is a range.** For example, "Holds to ~26/s. Folds by 27.5/s." The search stops at an
-  8% gap, which is the detector's measured resolution: on an M/M/1 queue at this budget, five seeds
-  agree up to λ = 47.5 and from λ = 51 onward, and disagree in between, including at exactly ρ = 1.
-- **It reports when a design has no clean threshold.** After bracketing, it runs the holding rate
-  once more on a different arrival stream. If that run fails, the bracket depended on the seed, and
-  the readout says so instead of quoting a number. The demo system triggers this on 3 seeds in 12.
-- **It names the component where the trouble started.** In a graph where callers wait on their
-  dependencies, a saturated datastore turns everything in front of it red, and the readout names the
-  datastore.
-- **It refuses a model it cannot sweep in a few seconds** and shows the calculation behind the
-  refusal, instead of freezing the page.
-
-Mark components as part of **this month's proposal** and it reports the breaking point both with and
-without them, from one model and on identical traffic. Mark a number as **disputed** and it reports
-the answer across that number's range. A difference smaller than the sweep's own resolution is
-reported as no improvement.
-
-## No network access, and how to check it
-
-The page makes no network requests at all, and you can verify this yourself:
+The application is one HTML file whose content-security policy blocks every network destination.
+You can verify this:
 
 - `test/build-output.test.ts` builds the real file, opens it in Chromium over `file://` with every
-  non-`file:` request blocked and recorded, then exercises the demo, the editor, the validation
-  suite, and a breaking-point study, and checks that no request was attempted.
-- A test checks that the content-security policy is the first element in the `<head>` of the shipped
-  file and that it contains no host sources or wildcards.
-- `npm audit` reports no issues, and the build produces exactly one file with nothing to fetch.
-
-```
-npm test           # 550+ tests, including the build and browser checks
-npm audit
-```
+  non-`file:` request blocked and recorded, exercises the demo, the editor, the validation suite and
+  a breaking-point study, and checks that no request was attempted.
+- A test checks that the security policy is the first element in the shipped file's `<head>` and
+  contains no host sources or wildcards.
+- `npm audit` reports no issues, and the build produces one file with nothing to fetch.
 
 ## What it can't model yet
 
 - **Request classes.** Every request is treated the same, so there is no distinction between reads
-  and writes, no per-tenant admission control, and no per-class SLA. "What breaks first" is answered
-  in terms of shared capacity, even where most refusals are due to policy.
-- **Retries on other traffic.** Other traffic is a rate on a component with no call policy, so a
-  retry storm driven mainly by load you did not draw cannot be modelled yet.
-- **Fan-out as a distribution.** `times` is a single number. Where the tail is the problem, using the
-  mean produces a model that runs and looks healthy but misses the failure that matters.
+  and writes, no per-tenant admission control, and no per-class SLA.
+- **Retries on other traffic.** Other traffic has no call policy, so a retry storm driven mainly by
+  load you did not draw cannot be modelled yet.
+- **Fan-out as a distribution.** The number of calls per request is a single number. Where the tail
+  is the problem, the mean produces a model that looks healthy and misses the failure.
 - **More than one meaning of "done".** An asynchronous write has two endpoints, the reply the user
   waited for and the background work, and the readout reports the second.
 - **Batching and parallel calls.** Dependencies are called one at a time, and nothing is batched.
 - **Proposals that only add an arrow.** A proposal has to add a component.
+- **Saved load patterns.** A pattern applies to the current session and is not stored in the model
+  file.
 
-Out of scope from the start: circuit breakers and bulkheads, rate limiting, retry budgets and token
+Out of scope by design: circuit breakers and bulkheads, rate limiting, retry budgets and token
 buckets, scatter-gather with a join, cache TTL and key space, autoscaling, and network latency on a
 wire. Arrows take no time, so anything that costs time has to be drawn as a component.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

@@ -13,7 +13,8 @@
     "test:watch": "vitest",
     "audit": "npm audit",
     "package": "npm run build && node scripts/package.ts",
-    "capture": "npm run build && node scripts/capture-demo.ts"
+    "capture": "npm run build && node scripts/capture-demo.ts",
+    "video": "npm run build && node scripts/capture-video.ts && scripts/encode-video.sh"
   },
   "devDependencies": {
     "happy-dom": "^20.11.2",
