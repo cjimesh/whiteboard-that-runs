@@ -12,6 +12,11 @@ design review is trying to settle.
 Everything runs in the browser. The application is a single HTML file whose content-security policy
 blocks every network destination, so a model stays on the machine it was drawn on.
 
+![The demo in a retry storm: load is under the database's capacity, yet nothing completes, and the database is marked as the component that failed first.](docs/demo-2-retry-storm.png)
+
+*The demo at 44 requests a second. The database can handle about fifty, but retries push it over and
+nothing completes. Turning retries off brings it back without a restart.*
+
 ## Try it
 
 ```
