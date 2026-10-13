@@ -18,6 +18,7 @@
  * has to earn.
  */
 import type { LoadSegment, TrafficSource } from "../engine/timeline.ts";
+import { SHAPED_KINDS, type ShapedPattern } from "./load-pattern.ts";
 import { COMPONENT_KINDS, type ComponentKind } from "../specs/format.ts";
 import type { PartialCallPolicy } from "../specs/call-policy.ts";
 import type { Provenance } from "./document.ts";
@@ -158,6 +159,8 @@ export function parse(text: string): ParseResult {
 
   const load = parseLoad(document["load"]);
   if (typeof load === "string") return { ok: false, error: `That model could not be read: ${load}.` };
+  const pattern = parsePattern(document["pattern"]);
+  if (typeof pattern === "string") return { ok: false, error: pattern };
 
   const defaults = emptyDocument();
   const entryId = document["entryId"];
@@ -170,6 +173,7 @@ export function parse(text: string): ParseResult {
       edges,
       entryId: typeof entryId === "string" ? entryId : null,
       load,
+      ...(pattern === undefined ? {} : { pattern }),
       seed: typeof document["seed"] === "string" ? document["seed"] : defaults.seed,
       bucketWidth:
         typeof document["bucketWidth"] === "number" && document["bucketWidth"] > 0
@@ -180,6 +184,37 @@ export function parse(text: string): ParseResult {
       sources: parseSources(document["sources"]),
     },
   };
+}
+
+/**
+ * The load pattern, read like everything else here: schema, not runnability.
+ *
+ * Absent in every file saved before patterns existed, and those open with the
+ * steps they always had. A pattern of a kind this build does not know came from
+ * a newer version and is refused, because running the base rate in its place
+ * would show a different load from the one the author saved. Settings that are
+ * present but out of range are kept for `validateDocument` to name in the editor.
+ */
+function parsePattern(raw: unknown): ShapedPattern | undefined | string {
+  if (raw === undefined || raw === null) return undefined;
+  const unreadable = "That model's load pattern could not be read.";
+  if (!isRecord(raw)) return unreadable;
+  const kind = raw["kind"];
+  if (typeof kind !== "string" || !(SHAPED_KINDS as readonly string[]).includes(kind)) {
+    return `That model has a load pattern "${String(kind)}" this version does not know. It may come from a newer version.`;
+  }
+  const numbers = (...keys: string[]): boolean => keys.every((key) => typeof raw[key] === "number");
+  switch (kind) {
+    case "spiky":
+      if (!numbers("height", "every", "lasting")) return unreadable;
+      return { kind, height: raw["height"] as number, every: raw["every"] as number, lasting: raw["lasting"] as number };
+    case "random":
+      if (!numbers("spread", "every")) return unreadable;
+      return { kind, spread: raw["spread"] as number, every: raw["every"] as number };
+    default:
+      if (typeof raw["text"] !== "string") return unreadable;
+      return { kind: "formula", text: raw["text"] };
+  }
 }
 
 /**

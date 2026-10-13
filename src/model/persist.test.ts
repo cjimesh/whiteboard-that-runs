@@ -8,6 +8,7 @@ import {
   emptyDocument,
   setDisputed,
   setLoad,
+  setPattern,
   setProposal,
   setSpec,
   validateDocument,
@@ -256,5 +257,34 @@ describe("other traffic survives the round trip", () => {
     expect(result.ok === true && validateDocument(result.document).errors.join(" ")).toMatch(
       /"ghost", which is not in this model/,
     );
+  });
+});
+
+describe("a saved load pattern", () => {
+  const spiky = { kind: "spiky", height: 4, every: 30, lasting: 3 } as const;
+
+  it("reopens as exactly what was saved", () => {
+    const before = setPattern(setLoad(lastMonthsSystem(), [{ rate: 50, duration: 3600 }]), spiky);
+    const result = parse(serialize(before));
+    expect(result.ok === true && result.document).toEqual(before);
+    expect(result.ok === true && result.document.pattern).toEqual(spiky);
+  });
+
+  it("is absent from a model that has none, so older files read the same", () => {
+    expect(serialize(lastMonthsSystem())).not.toContain('"pattern"');
+  });
+
+  it("refuses a kind this version does not know, naming it", () => {
+    const file = JSON.parse(serialize(lastMonthsSystem()));
+    file.document.pattern = { kind: "diurnal" };
+    const result = parse(JSON.stringify(file));
+    expect(result.ok === false && result.error).toMatch(/"diurnal" this version does not know/);
+  });
+
+  it("refuses a pattern with its settings missing", () => {
+    const file = JSON.parse(serialize(lastMonthsSystem()));
+    file.document.pattern = { kind: "formula" };
+    const result = parse(JSON.stringify(file));
+    expect(result.ok === false && result.error).toMatch(/load pattern could not be read/);
   });
 });

@@ -10,7 +10,10 @@ import {
   removeTrafficSource,
   setDisputed,
   setEntry,
+  loadPatternOf,
   setLoad,
+  setPattern,
+  setPatternKind,
   setProposal,
   setSpec,
   setTrafficSource,
@@ -376,5 +379,72 @@ describe("other traffic on a shared component", () => {
   it("takes it away on its own too", () => {
     const { document, id } = addTrafficSource(demoShape(), "datastore-1", 40);
     expect(removeTrafficSource(document, id).sources).toEqual([]);
+  });
+});
+
+describe("the load pattern", () => {
+  const errorsFor = (doc: WhiteboardDocument): string => validateDocument(doc).errors.join(" | ");
+
+  it("reads a single step as steady and several as a schedule", () => {
+    expect(loadPatternOf(demoShape()).pattern).toEqual({ kind: "steady" });
+    const schedule = setLoad(demoShape(), [
+      { rate: 10, duration: 30 },
+      { rate: 40, duration: 5 },
+    ]);
+    expect(loadPatternOf(schedule)).toEqual({ base: 10, pattern: { kind: "steps", steps: schedule.load } });
+  });
+
+  it("switches to a shape around the base rate, and back", () => {
+    const steady = setLoad(demoShape(), [{ rate: 25, duration: 3600 }]);
+    const spiky = setPatternKind(steady, "spiky");
+    expect(spiky.pattern).toEqual({ kind: "spiky", height: 3, every: 20, lasting: 2 });
+    expect(spiky.load).toEqual([{ rate: 25, duration: 3600 }]);
+
+    const back = setPatternKind(spiky, "steady");
+    expect("pattern" in back).toBe(false);
+    expect(back.load).toEqual([{ rate: 25, duration: 3600 }]);
+  });
+
+  it("keeps a shape's own settings when switched back to", () => {
+    const mine = { kind: "random", spread: 0.2, every: 3 } as const;
+    expect(setPatternKind(demoShape(), "random", mine).pattern).toEqual(mine);
+  });
+
+  it("turns a steady rate into a schedule of two equal steps", () => {
+    const steps = setPatternKind(setLoad(demoShape(), [{ rate: 25, duration: 3600 }]), "steps");
+    expect(steps.load).toEqual([
+      { rate: 25, duration: 60 },
+      { rate: 25, duration: 60 },
+    ]);
+  });
+
+  it("starts a shape from a schedule's first step", () => {
+    const schedule = setLoad(demoShape(), [
+      { rate: 10, duration: 30 },
+      { rate: 40, duration: 5 },
+    ]);
+    expect(setPatternKind(schedule, "spiky").load).toEqual([{ rate: 10, duration: 3600 }]);
+  });
+
+  it("runs the shape from sim time zero", () => {
+    const spiky = setPattern(setLoad(demoShape(), [{ rate: 10, duration: 3600 }]), {
+      kind: "spiky",
+      height: 3,
+      every: 20,
+      lasting: 2,
+    });
+    expect(toTimeline(spiky).load.slice(0, 3)).toEqual([
+      { rate: 10, duration: 18 },
+      { rate: 30, duration: 2 },
+      { rate: 10, duration: 18 },
+    ]);
+  });
+
+  it("names a pattern that cannot run before Run is pressed", () => {
+    const base = setLoad(demoShape(), [{ rate: 10, duration: 3600 }]);
+    expect(errorsFor(setPattern(base, { kind: "formula", text: "base *" }))).toMatch(/The load pattern: .*ends too early/);
+    expect(errorsFor(setPattern(base, { kind: "spiky", height: 3, every: 5, lasting: 9 }))).toMatch(/less than the gap/);
+    expect(errorsFor(setPattern(base, { kind: "formula", text: "t > 10 ? 1e9 : base" }))).toMatch(/The most this page will run/);
+    expect(validateDocument(setPattern(base, { kind: "formula", text: "base * 2" })).ok).toBe(true);
   });
 });

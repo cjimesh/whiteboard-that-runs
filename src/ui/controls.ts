@@ -13,7 +13,8 @@
  */
 import { CONCERNS, type ComponentKind } from "../specs/format.ts";
 import type { PartialComponentSpec } from "../specs/format.ts";
-import type { WhiteboardDocument } from "../model/document.ts";
+import { loadPatternOf, type WhiteboardDocument } from "../model/document.ts";
+import { sliderMaxFor, type LoadPattern } from "../model/load-pattern.ts";
 
 export interface PresetOption {
   value: string;
@@ -84,7 +85,8 @@ export interface CallControl {
 }
 
 export interface RunControls {
-  load: { min: number; max: number; base: number; step: number };
+  /** `pattern` is the load's shape to start on; absent means steady. */
+  load: { min: number; max: number; base: number; step: number; pattern?: LoadPattern };
   presets: PresetControl[];
   capacities: CapacityControl[];
   timeouts: TimeoutControl[];
@@ -101,9 +103,9 @@ export interface RunControls {
  * somewhere irrelevant is a slider nobody can drive in front of a room.
  */
 export function controlsForDocument(document: WhiteboardDocument): RunControls {
-  const base = document.load[0]?.rate ?? 20;
-  const peak = document.load.reduce((most, segment) => Math.max(most, segment.rate), base);
-  const max = Math.max(10, Math.ceil((peak * 2.5) / 5) * 5);
+  const { base: modelBase, pattern } = loadPatternOf(document);
+  const base = document.load.length > 0 ? modelBase : 20;
+  const max = sliderMaxFor(document.load.length > 0 ? document.load : [{ rate: base, duration: 1 }]);
 
   const capacities: CapacityControl[] = [];
   const timeouts: TimeoutControl[] = [];
@@ -146,7 +148,7 @@ export function controlsForDocument(document: WhiteboardDocument): RunControls {
     }));
 
   return {
-    load: { min: 1, max, base: Math.min(base, max), step: 1 },
+    load: { min: 1, max, base: Math.min(base, max), step: 1, ...(pattern.kind === "steady" ? {} : { pattern }) },
     // Presets belong to the editor, where a behaviour is chosen. Offering them
     // again here would be a second way to set the same thing, and the two would
     // disagree the moment a parameter was typed by hand.

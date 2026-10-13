@@ -22,6 +22,17 @@
  */
 import type { EdgeKind, LoadSegment, ModelSnapshot, Timeline, TrafficSource } from "../engine/timeline.ts";
 import {
+  checkPattern,
+  DEFAULT_PATTERNS,
+  PATTERN_LIMIT_FACTOR,
+  patternSegments,
+  sliderMaxFor,
+  stepsReference,
+  type LoadPattern,
+  type PatternKind,
+  type ShapedPattern,
+} from "./load-pattern.ts";
+import {
   COMPONENT_KINDS,
   resolveSpec,
   validateSpec,
@@ -97,7 +108,17 @@ export interface WhiteboardDocument {
   edges: readonly DocumentEdge[];
   /** Where offered load enters. `null` until an author picks one. */
   entryId: string | null;
+  /**
+   * The offered load as steps. One step is a steady rate; several are a schedule.
+   * With a `pattern`, the single step's rate is the base the pattern moves around.
+   */
   load: readonly LoadSegment[];
+  /**
+   * A spiky, random or formula shape around the base rate. Absent when the steps
+   * in `load` are the whole story, which is every model saved before patterns
+   * existed, so those open exactly as they did.
+   */
+  pattern?: ShapedPattern;
   seed: string;
   /** Metrics window, sim seconds. Small values keep the live gauges moving. */
   bucketWidth: number;
@@ -351,6 +372,64 @@ export function setLoad(document: WhiteboardDocument, load: readonly LoadSegment
 }
 
 /**
+ * The model's load as one base rate and one pattern: what the editor's load
+ * panel shows, and what the run surface's slider and pattern menu start on.
+ */
+export function loadPatternOf(document: WhiteboardDocument): { base: number; pattern: LoadPattern } {
+  const first = document.load[0]?.rate ?? 0;
+  if (document.pattern !== undefined) return { base: first, pattern: document.pattern };
+  if (document.load.length > 1) {
+    return { base: stepsReference(document.load), pattern: { kind: "steps", steps: document.load } };
+  }
+  return { base: first, pattern: { kind: "steady" } };
+}
+
+/**
+ * Switch the load to another kind of pattern, keeping its base rate.
+ *
+ * `shape` is the settings to switch to for a spiky, random or formula pattern,
+ * so an author who flips away and back gets their own settings back; without it
+ * the kind's defaults are used. A schedule switched away from keeps only its
+ * base rate, which is why the editor offers Undo.
+ */
+export function setPatternKind(
+  document: WhiteboardDocument,
+  kind: PatternKind,
+  shape?: ShapedPattern,
+): WhiteboardDocument {
+  const current = loadPatternOf(document);
+  if (current.pattern.kind === kind) return document;
+  const { pattern: _dropped, ...rest } = document;
+  const base = current.base;
+
+  switch (kind) {
+    case "steady":
+      return { ...rest, load: [{ rate: base, duration: 3600 }] };
+    case "steps":
+      // Two equal steps: a schedule the author can see and edit. Inventing a
+      // spike here would put a number on screen nobody chose.
+      return {
+        ...rest,
+        load: [
+          { rate: base, duration: 60 },
+          { rate: base, duration: 60 },
+        ],
+      };
+    default:
+      return {
+        ...rest,
+        load: [{ rate: base, duration: 3600 }],
+        pattern: shape?.kind === kind ? shape : DEFAULT_PATTERNS[kind],
+      };
+  }
+}
+
+/** Change a spiky, random or formula pattern's settings. */
+export function setPattern(document: WhiteboardDocument, pattern: ShapedPattern): WhiteboardDocument {
+  return { ...document, pattern };
+}
+
+/**
  * State the traffic a shared component already carries.
  *
  * Named after the component by default, because "other traffic on orders-db" is
@@ -529,6 +608,7 @@ export function validateDocument(document: WhiteboardDocument): DocumentValidati
     }
   });
   if (document.load.length === 0) errors.push("There is no load to offer. Add at least one step.");
+  errors.push(...patternErrors(document));
 
   // Only meaningful once the graph itself holds together; running it on a model
   // with dangling edges produces messages about consequences of a problem the
@@ -763,6 +843,28 @@ function toModelSnapshot(document: WhiteboardDocument): ModelSnapshot {
 }
 
 /**
+ * A saved pattern that cannot run, said in the editor before Run is pressed.
+ *
+ * The run surface would refuse the same pattern, but only after the author had
+ * left the editor, and a model that opens to a refusal looks broken.
+ */
+function patternErrors(document: WhiteboardDocument): string[] {
+  const pattern = document.pattern;
+  if (pattern === undefined) return [];
+  if (document.load.length !== 1) {
+    return ["A load pattern moves around one base rate, and this load has several steps. Choose Steps or remove all but one."];
+  }
+  const problem = checkPattern(pattern);
+  if (problem !== null) return [`The load pattern: ${problem}`];
+  const laid = patternSegments(pattern, document.load[0]?.rate ?? 0, {
+    from: 0,
+    seed: document.seed,
+    limit: sliderMaxFor(document.load) * PATTERN_LIMIT_FACTOR,
+  });
+  return laid.ok ? [] : [`The load pattern: ${laid.error}`];
+}
+
+/**
  * The document as the engine's input.
  *
  * A fresh run every time: no mutations, because a document has no history — the
@@ -773,11 +875,29 @@ function toModelSnapshot(document: WhiteboardDocument): ModelSnapshot {
 export function toTimeline(document: WhiteboardDocument): Timeline {
   return {
     model: toModelSnapshot(document),
-    load: [...document.load],
+    load: timelineLoad(document),
     seed: document.seed,
     mutations: [],
     bucketWidth: document.bucketWidth,
   };
+}
+
+/**
+ * The segments a run starts with. Steps go to the engine exactly as typed, as
+ * they always have; a pattern is laid out from sim time zero, which is where the
+ * run surface lays it out too, so the first drag of the slider changes the
+ * height of the load and nothing else.
+ */
+function timelineLoad(document: WhiteboardDocument): LoadSegment[] {
+  if (document.pattern === undefined) return [...document.load];
+  const laid = patternSegments(document.pattern, document.load[0]?.rate ?? 0, {
+    from: 0,
+    seed: document.seed,
+    limit: Infinity,
+  });
+  // `validateDocument` refuses a pattern that cannot be laid out, so a failure
+  // here is a model nobody validated; it runs on its base rate.
+  return laid.ok ? laid.segments : [...document.load];
 }
 
 /** A component's spec with every concern filled in, for the parameter panel. */

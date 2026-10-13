@@ -42,8 +42,8 @@ send to someone.
 - **Run it and steer it live.** Drag the load, change a timeout, switch a retry policy, or turn off
   another team's traffic. Each change applies to the running simulation without a restart and
   appears as a chip under the canvas, and the whole session can be replayed exactly.
-- **Shape the traffic.** Choose steady, spiky, or random load, or type a formula of your own. See
-  [Load patterns](#load-patterns).
+- **Shape the traffic.** Choose steady, spiky, or random load, a schedule of steps, or a formula of
+  your own. The pattern is saved with the model. See [Load patterns](#load-patterns).
 - **Find the breaking point.** One button brackets the sustained rate the design holds to, names
   the component where the trouble starts, and says so when a design has no clean threshold.
 - **Compare a proposal.** Mark the components this month's proposal adds and get the breaking point
@@ -75,17 +75,22 @@ send to someone.
 
 ## Load patterns
 
-The **Pattern** menu next to the load slider sets how the load moves over time. The slider stays the
-number being discussed, and the pattern describes the traffic around it.
+A load pattern sets how the load moves over time. Choose one under **Requests per second** in the
+editor, where it is saved with the model, or from the **Pattern** menu next to the load slider while
+the model runs. A run starts on the model's saved pattern. The slider stays the number being
+discussed, and the pattern describes the traffic around it.
 
 | Pattern | What it does | Settings |
 | --- | --- | --- |
 | **Steady** | The slider's rate, all the time. | None |
+| **Steps** | A schedule of rates typed in the editor, played once. Load stops when it ends. The slider starts at the first step's rate and scales every step in proportion. | Each step's rate and duration (in the editor) |
 | **Spiky** | The slider's rate, with a burst at the end of every period. | Spike height (× the load), how long it lasts, how often it comes |
 | **Random** | A new rate every few seconds, drawn evenly within a band around the slider. It averages to the slider's rate. | Swing (±%), how long each rate holds |
 | **Formula** | Any rate you can write as a function of time. | The formula |
 
-Under the settings, a line states the average and peak rate the pattern produces over the next hour.
+Under the settings, a line states the average and peak rate the pattern produces over the next hour,
+or until a schedule of steps ends. In the editor, a spiky, random or formula pattern is set around a
+**Base** rate, which is where the slider starts.
 Patterns follow simulation time since the run started, so dragging the slider during a spiky run
 changes the height of the spikes and leaves their timing alone. Random load comes from the run's seed,
 so **Rerun clean** and a replay see the same traffic.
@@ -93,7 +98,7 @@ so **Rerun clean** and a replay see the same traffic.
 ### Writing a formula
 
 A formula gives requests per second at time `t`, in seconds since the run started. `base` is the
-slider's value. The formula is read once a second, and a negative result counts as no traffic.
+slider's value, or the base rate in the editor. The formula is read once a second, and a negative result counts as no traffic.
 
 | Shape | Formula |
 | --- | --- |
@@ -189,8 +194,6 @@ You can verify this:
   waited for and the background work, and the readout reports the second.
 - **Batching and parallel calls.** Dependencies are called one at a time, and nothing is batched.
 - **Proposals that only add an arrow.** A proposal has to add a component.
-- **Saved load patterns.** A pattern applies to the current session and is not stored in the model
-  file.
 
 Out of scope by design: circuit breakers and bulkheads, rate limiting, retry budgets and token
 buckets, scatter-gather with a join, cache TTL and key space, autoscaling, and network latency on a

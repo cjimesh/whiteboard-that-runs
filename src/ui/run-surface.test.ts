@@ -506,6 +506,48 @@ describe("the load pattern", () => {
   });
 });
 
+describe("a schedule of steps from the editor", () => {
+  const steps = [
+    { rate: 10, duration: 20 },
+    { rate: 40, duration: 10 },
+  ];
+
+  beforeEach(() => {
+    surface.destroy();
+    root.replaceChildren();
+    sim = createModelSimulation({ ...demoTimeline(), load: steps });
+    const controls = demoControls();
+    surface = createRunSurface(sim, {
+      ...controls,
+      load: { ...controls.load, base: 10, pattern: { kind: "steps", steps } },
+    });
+    root.append(surface.element);
+    surface.start();
+  });
+
+  it("scales every step with the slider, keeping the schedule's timing", () => {
+    sim.runUntil(5);
+    setValue('[data-action="load"]', "20", "input");
+    expect(sim.recorded().mutations.at(-1)).toMatchObject({
+      kind: "set-load",
+      segments: [
+        { rate: 20, duration: 15 },
+        { rate: 80, duration: 10 },
+      ],
+    });
+  });
+
+  it("offers no more load once the schedule is over, and says so", () => {
+    sim.runUntil(40);
+    setValue('[data-action="load"]', "20", "input");
+    expect(sim.recorded().mutations.at(-1)).toMatchObject({ kind: "set-load", segments: [] });
+    expect(find("[data-pattern-summary]").textContent).toMatch(/schedule has ended/);
+    sim.runUntil(60);
+    const late = sim.series().filter((bucket) => bucket.start >= 45);
+    expect(late.reduce((sum, bucket) => sum + bucket.system.arrivals, 0)).toBe(0);
+  });
+});
+
 describe("transport", () => {
   it("stops advancing the clock when paused, and says so", () => {
     click('[data-action="play-pause"]');

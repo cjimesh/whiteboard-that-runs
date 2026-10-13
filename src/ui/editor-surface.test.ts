@@ -296,6 +296,35 @@ describe("authoring a system (F1)", () => {
     ]);
   });
 
+  it("saves a spiky load with the model", () => {
+    click('[data-action="add:app"]');
+    setValue('[data-action="load-pattern"]', "spiky");
+    setValue('[data-load-rate="0"]', "40");
+    setValue('[data-action="pattern:height"]', "5");
+
+    expect(surface.document().load).toEqual([{ rate: 40, duration: 3600 }]);
+    expect(surface.document().pattern).toEqual({ kind: "spiky", height: 5, every: 20, lasting: 2 });
+    expect(find("[data-pattern-summary]").textContent).toContain("peaks at 200/s");
+  });
+
+  it("refuses a bad pattern setting and keeps the one it had", () => {
+    click('[data-action="add:app"]');
+    setValue('[data-action="load-pattern"]', "formula");
+    setValue('[data-action="pattern:formula"]', "fetch(1)");
+    expect(find(".wtr-load .wtr-pattern-error").textContent).toContain('"fetch" is not a function');
+    expect(surface.document().pattern).toEqual({ kind: "formula", text: "base * (1 + 0.5 * sin(2 * pi * t / 60))" });
+  });
+
+  it("gives a shape back its settings after a trip to steady", () => {
+    click('[data-action="add:app"]');
+    setValue('[data-action="load-pattern"]', "random");
+    setValue('[data-action="pattern:spread"]', "20");
+    setValue('[data-action="load-pattern"]', "steady");
+    expect(surface.document().pattern).toBeUndefined();
+    setValue('[data-action="load-pattern"]', "random");
+    expect(surface.document().pattern).toEqual({ kind: "random", spread: 0.2, every: 5 });
+  });
+
   it("removes a component and the arrows that pointed at it", () => {
     click('[data-action="add:app"]');
     click('[data-action="add:database"]');

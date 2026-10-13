@@ -112,6 +112,37 @@ describe("running an authored model", () => {
   });
 });
 
+describe("a load pattern set in the editor", () => {
+  const change = (selector: string, value: string): void => {
+    const node = root.querySelector<HTMLInputElement | HTMLSelectElement>(selector);
+    if (node === null) throw new Error(`no element matching ${selector}`);
+    node.value = value;
+    node.dispatchEvent(new window.Event("change", { bubbles: true }));
+  };
+
+  it("is the pattern the run starts on", () => {
+    app = mountApp(root);
+    click('[data-action="edit"]');
+    change('[data-action="load-pattern"]', "spiky");
+    click('[data-action="run"]');
+
+    expect(root.querySelector<HTMLSelectElement>('[data-action="pattern"]')?.value).toBe("spiky");
+    expect(root.querySelector<HTMLInputElement>('[data-action="pattern:height"]')?.value).toBe("3");
+  });
+
+  it("offers a typed schedule as Steps, scaled by the slider", () => {
+    app = mountApp(root);
+    click('[data-action="edit"]');
+    change('[data-action="load-pattern"]', "steps");
+    click('[data-action="run"]');
+
+    const select = root.querySelector<HTMLSelectElement>('[data-action="pattern"]');
+    expect(select?.value).toBe("steps");
+    expect([...(select?.options ?? [])].map((option) => option.value)).toContain("steps");
+    expect(root.querySelector("[data-pattern-summary]")?.textContent).toMatch(/until the schedule ends at 120 s/);
+  });
+});
+
 describe("leaving with work nobody saved", () => {
   const leave = (): Event => {
     const event = new window.Event("beforeunload", { cancelable: true });

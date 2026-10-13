@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_PATTERNS, patternSegments, type LoadPattern } from "./load-pattern.ts";
+import { DEFAULT_PATTERNS, patternSegments, summarizePattern, type LoadPattern } from "./load-pattern.ts";
 import type { LoadSegment } from "../engine/timeline.ts";
 
 const options = { from: 0, seed: "seed", limit: 10_000 };
@@ -126,5 +126,56 @@ describe("a formula", () => {
   it("passes on a parse error", () => {
     const result = patternSegments({ kind: "formula", text: "base *" }, 10, options);
     expect(!result.ok && result.error).toContain("ends too early");
+  });
+});
+
+describe("steps", () => {
+  const steps: LoadPattern = {
+    kind: "steps",
+    steps: [
+      { rate: 20, duration: 60 },
+      { rate: 80, duration: 10 },
+      { rate: 20, duration: 60 },
+    ],
+  };
+
+  it("are the schedule as typed when the slider sits on the first step", () => {
+    const result = lay(steps, 20);
+    expect(result.segments).toEqual([
+      { rate: 20, duration: 60 },
+      { rate: 80, duration: 10 },
+      { rate: 20, duration: 60 },
+    ]);
+    expect(result.ends).toBe(130);
+    expect(result.span).toBe(130);
+  });
+
+  it("move in proportion when the slider moves", () => {
+    expect(lay(steps, 30).segments.map((segment) => segment.rate)).toEqual([30, 120, 30]);
+  });
+
+  it("pick up mid-schedule, and stop at its end", () => {
+    const { segments } = lay(steps, 20, { from: 65 });
+    expect(segments).toEqual([
+      { rate: 80, duration: 5 },
+      { rate: 20, duration: 60 },
+    ]);
+    expect(lay(steps, 20, { from: 500 }).segments).toEqual([]);
+  });
+
+  it("keep two equal steps as two, the way they were typed", () => {
+    const twice: LoadPattern = { kind: "steps", steps: [{ rate: 5, duration: 10 }, { rate: 5, duration: 10 }] };
+    expect(lay(twice, 5).segments).toHaveLength(2);
+  });
+
+  it("measure the slider against the busiest step when the first is quiet", () => {
+    const quietStart: LoadPattern = { kind: "steps", steps: [{ rate: 0, duration: 10 }, { rate: 50, duration: 10 }] };
+    expect(lay(quietStart, 100).segments.map((segment) => segment.rate)).toEqual([0, 100]);
+  });
+
+  it("say when the schedule has run out", () => {
+    const result = lay(steps, 20, { from: 500 });
+    expect(summarizePattern(result)).toMatch(/schedule has ended/);
+    expect(summarizePattern(lay(steps, 20, { from: 65 }))).toMatch(/until the schedule ends at 130 s/);
   });
 });

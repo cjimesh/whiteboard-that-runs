@@ -1,5 +1,6 @@
 /**
- * The shape of the offered load over time: steady, spiky, random, or a formula.
+ * The shape of the offered load over time: steady, steps, spiky, random, or a
+ * formula.
  *
  * Every pattern compiles to the load segments the engine already runs (see
  * `LoadSegment` in `engine/timeline.ts`), so the engine is untouched and a
@@ -12,7 +13,8 @@
  * the shape on every drag would put a spike under the driver's hand each time.
  *
  * The slider stays the one number the room argues about. For spiky load it is
- * the rate between spikes; for random load it is the average. The breaking-point
+ * the rate between spikes; for random load it is the average; for steps it is
+ * the first step's rate, and every step moves in proportion. The breaking-point
  * sweep keeps probing steady rates (see `verdict/sweep.ts`), so a pattern changes
  * the live run and leaves that answer alone.
  */
@@ -22,6 +24,11 @@ import { compileFormula } from "./rate-formula.ts";
 
 export type LoadPattern =
   | { readonly kind: "steady" }
+  /**
+   * The schedule an author typed, step by step, played once from the start of the
+   * run. The rates are as typed; the slider scales them (see `stepsReference`).
+   */
+  | { readonly kind: "steps"; readonly steps: readonly LoadSegment[] }
   /** `height`× the base rate for `lasting` seconds at the end of every `every` seconds. */
   | { readonly kind: "spiky"; readonly height: number; readonly every: number; readonly lasting: number }
   /** A fresh rate every `every` seconds, uniform within ±`spread` (a fraction) of the base. */
@@ -31,8 +38,18 @@ export type LoadPattern =
 
 export type PatternKind = LoadPattern["kind"];
 
+/**
+ * The patterns a model file stores in its own `pattern` field. Steady and steps
+ * live in the file's `load` list, as they did before patterns existed, so a file
+ * saved before them opens unchanged.
+ */
+export type ShapedPattern = Extract<LoadPattern, { kind: "spiky" | "random" | "formula" }>;
+
+export const SHAPED_KINDS: readonly ShapedPattern["kind"][] = ["spiky", "random", "formula"];
+
 export const DEFAULT_PATTERNS: { readonly [K in PatternKind]: Extract<LoadPattern, { kind: K }> } = {
   steady: { kind: "steady" },
+  steps: { kind: "steps", steps: [{ rate: 20, duration: 60 }] },
   spiky: { kind: "spiky", height: 3, every: 20, lasting: 2 },
   random: { kind: "random", spread: 0.5, every: 5 },
   formula: { kind: "formula", text: "base * (1 + 0.5 * sin(2 * pi * t / 60))" },
@@ -49,8 +66,39 @@ const FORMULA_STEP = 1;
 const MIN_EVERY = 1;
 const MIN_LASTING = 0.1;
 
+/**
+ * The load slider's top for a model whose load steps are these: two and a half
+ * times the busiest step. See `controlsForDocument` for why it is relative.
+ */
+export function sliderMaxFor(steps: readonly LoadSegment[]): number {
+  const peak = steps.reduce((most, segment) => Math.max(most, segment.rate), 0);
+  return Math.max(10, Math.ceil((peak * 2.5) / 5) * 5);
+}
+
+/**
+ * How far past the slider's top a pattern may peak. Far beyond anything the
+ * slider's range was built around, and low enough that a runaway rate is refused
+ * instead of freezing the page.
+ */
+export const PATTERN_LIMIT_FACTOR = 10;
+
+/**
+ * The rate a steps schedule is measured against: the slider starts here, and
+ * dragging it to twice this doubles every step. The first step, unless it is
+ * zero (a schedule that starts quiet), in which case the busiest one.
+ */
+export function stepsReference(steps: readonly LoadSegment[]): number {
+  const first = steps[0]?.rate ?? 0;
+  return first > 0 ? first : steps.reduce((most, segment) => Math.max(most, segment.rate), 0);
+}
+
 export type PatternResult =
-  | { ok: true; segments: LoadSegment[]; mean: number; peak: number }
+  /**
+   * `span` is the sim seconds the segments cover: the horizon, or the rest of a
+   * schedule. `ends` is the sim time a schedule runs out; `null` for a pattern
+   * that carries on past the horizon.
+   */
+  | { ok: true; segments: LoadSegment[]; mean: number; peak: number; span: number; ends: number | null }
   | { ok: false; error: string };
 
 export interface PatternOptions {
@@ -67,6 +115,13 @@ export interface PatternOptions {
 export function checkPattern(pattern: LoadPattern): string | null {
   switch (pattern.kind) {
     case "steady":
+      return null;
+    case "steps":
+      if (pattern.steps.length === 0) return "There is no load to offer. Add at least one step.";
+      for (const [index, step] of pattern.steps.entries()) {
+        if (!Number.isFinite(step.rate) || step.rate < 0) return `Step ${index + 1} needs a rate of zero or more.`;
+        if (!Number.isFinite(step.duration) || step.duration <= 0) return `Step ${index + 1} needs to last longer than 0 s.`;
+      }
       return null;
     case "spiky":
       if (!(pattern.height >= 1) || !Number.isFinite(pattern.height)) {
@@ -93,17 +148,22 @@ export function checkPattern(pattern: LoadPattern): string | null {
 }
 
 /**
- * Lay a pattern out as load segments covering `[from, from + horizon)`.
+ * Lay a pattern out as load segments covering `[from, from + horizon)`, or for
+ * steps, from `from` to the end of the schedule.
  *
  * Adjacent stretches at the same rate are merged, so a spiky hour is a few
  * hundred segments and a steady one is exactly the single segment it always was.
+ * Steps are the exception: they come back as typed, so a schedule laid out from
+ * zero is the very list the author wrote.
  */
 export function patternSegments(pattern: LoadPattern, base: number, options: PatternOptions): PatternResult {
   const problem = checkPattern(pattern);
   if (problem !== null) return { ok: false, error: problem };
 
   const from = options.from;
-  const end = from + (options.horizon ?? PATTERN_HORIZON);
+  const scheduleEnd =
+    pattern.kind === "steps" ? pattern.steps.reduce((total, step) => total + step.duration, 0) : Infinity;
+  const end = Math.min(from + (options.horizon ?? PATTERN_HORIZON), scheduleEnd);
   const segments: LoadSegment[] = [];
   let weighted = 0;
   let peak = 0;
@@ -125,7 +185,7 @@ export function patternSegments(pattern: LoadPattern, base: number, options: Pat
       if (!(stop > at)) return "That pattern's timing is too fine to lay out. Use gaps of a tenth of a second or more.";
       const duration = stop - at;
       const last = segments[segments.length - 1];
-      if (last !== undefined && last.rate === clamped) {
+      if (last !== undefined && last.rate === clamped && pattern.kind !== "steps") {
         segments[segments.length - 1] = { rate: clamped, duration: last.duration + duration };
       } else {
         segments.push({ rate: clamped, duration });
@@ -146,6 +206,25 @@ export function patternSegments(pattern: LoadPattern, base: number, options: Pat
     case "steady":
       error = lay(() => ({ rate: base, until: end }));
       break;
+
+    case "steps": {
+      const reference = stepsReference(pattern.steps);
+      const scale = reference > 0 ? base / reference : 1;
+      const starts: number[] = [];
+      let start = 0;
+      for (const step of pattern.steps) {
+        starts.push(start);
+        start += step.duration;
+      }
+      error = lay((at) => {
+        // The last step that has started by `at`.
+        let index = starts.length - 1;
+        while (index > 0 && (starts[index] as number) > at + 1e-9) index -= 1;
+        const step = pattern.steps[index] as LoadSegment;
+        return { rate: step.rate * scale, until: (starts[index] as number) + step.duration };
+      });
+      break;
+    }
 
     case "spiky": {
       const quiet = pattern.every - pattern.lasting;
@@ -187,8 +266,15 @@ export function patternSegments(pattern: LoadPattern, base: number, options: Pat
   }
 
   if (error !== null) return { ok: false, error };
-  const span = end - from;
-  return { ok: true, segments, mean: span > 0 ? weighted / span : 0, peak };
+  const span = Math.max(0, end - from);
+  return {
+    ok: true,
+    segments,
+    mean: span > 0 ? weighted / span : 0,
+    peak,
+    span,
+    ends: Number.isFinite(scheduleEnd) ? scheduleEnd : null,
+  };
 }
 
 function round(rate: number): number {
@@ -200,6 +286,10 @@ export function describePattern(pattern: LoadPattern): string {
   switch (pattern.kind) {
     case "steady":
       return "steady";
+    case "steps":
+      return `${pattern.steps.length} step${pattern.steps.length === 1 ? "" : "s"} over ${Number(
+        pattern.steps.reduce((total, step) => total + step.duration, 0).toFixed(1),
+      )} s`;
     case "spiky":
       return `spikes of ${pattern.height}× for ${pattern.lasting} s every ${pattern.every} s`;
     case "random":
@@ -209,7 +299,13 @@ export function describePattern(pattern: LoadPattern): string {
   }
 }
 
-/** What the pattern does to the load, in the units the room reads. */
-export function summarizePattern(result: { mean: number; peak: number }): string {
-  return `Averages ${round(result.mean)}/s and peaks at ${round(result.peak)}/s over the next hour.`;
+/**
+ * What the pattern does to the load, in the units the room reads. A schedule's
+ * end is said as a sim time, which stays true while the run moves on.
+ */
+export function summarizePattern(result: { mean: number; peak: number; span: number; ends: number | null }): string {
+  const rates = `Averages ${round(result.mean)}/s and peaks at ${round(result.peak)}/s`;
+  if (result.ends === null) return `${rates} over the next hour.`;
+  if (result.span <= 0) return "The schedule has ended, so no more load arrives.";
+  return `${rates} until the schedule ends at ${Number(result.ends.toFixed(1))} s, when load stops.`;
 }

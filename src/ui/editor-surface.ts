@@ -54,6 +54,9 @@ import {
   setEntry,
   setLoad,
   setName,
+  setPattern,
+  setPatternKind,
+  loadPatternOf,
   setProposal,
   setProvenance,
   setSpec,
@@ -66,6 +69,8 @@ import {
   type WhiteboardDocument,
 } from "../model/document.ts";
 import { parse, serialize, suggestedFilename } from "../model/persist.ts";
+import { patternSegments, summarizePattern, type PatternKind, type ShapedPattern } from "../model/load-pattern.ts";
+import { PATTERN_LABELS, patternFields } from "./pattern-fields.ts";
 import { emptyFrame, type Frame } from "../view/frame.ts";
 import { createRenderer, type Decorations, type Renderer } from "../view/renderer.ts";
 import { fieldsFor, tierOf, type ParamField } from "../model/params.ts";
@@ -310,6 +315,9 @@ export function createEditorSurface(options: EditorOptions): EditorSurface {
   let renderer: Renderer | null = null;
   let frame: Frame = emptyFrame(toTimeline(doc).model);
   let dragLine: { x1: number; y1: number; x2: number; y2: number } | null = null;
+
+  /** The last settings of each shaped pattern, so flipping away and back keeps them. */
+  const shapes: Partial<Record<ShapedPattern["kind"], ShapedPattern>> = {};
 
   /** Every change goes through here, so every change can be undone. */
   const update = (next: WhiteboardDocument): void => {
@@ -929,6 +937,30 @@ export function createEditorSurface(options: EditorOptions): EditorSurface {
   // ------------------------------------------------------------------- load
   const renderLoad = (): void => {
     loadPanel.replaceChildren(element("h2", "wtr-panel-title", "Requests per second"));
+    const { pattern } = loadPatternOf(doc);
+    if (pattern.kind !== "steady" && pattern.kind !== "steps") shapes[pattern.kind] = pattern;
+
+    const kinds = element("select", "wtr-select");
+    kinds.dataset["action"] = "load-pattern";
+    kinds.setAttribute("aria-label", "Load pattern");
+    for (const kind of Object.keys(PATTERN_LABELS) as PatternKind[]) {
+      const option = element("option", undefined, PATTERN_LABELS[kind]);
+      option.value = kind;
+      if (kind === pattern.kind) option.selected = true;
+      kinds.append(option);
+    }
+    kinds.addEventListener("change", () => {
+      const kind = kinds.value as PatternKind;
+      update(setPatternKind(doc, kind, kind === "steady" || kind === "steps" ? undefined : shapes[kind]));
+    });
+    const kindField = element("label", "wtr-field");
+    kindField.append(element("span", "wtr-field-label", "Pattern"), kinds);
+    loadPanel.append(kindField);
+
+    if (pattern.kind !== "steady" && pattern.kind !== "steps") {
+      renderShapedLoad(pattern);
+      return;
+    }
 
     doc.load.forEach((segment, index) => {
       const row = element("div", "wtr-load-row");
@@ -967,12 +999,53 @@ export function createEditorSurface(options: EditorOptions): EditorSurface {
       loadPanel.append(row);
     });
 
-    const add = button(doc.load.length === 1 ? "Add a spike or a change…" : "Add step", "add-step", "wtr-button wtr-button-small");
+    const add = button(doc.load.length === 1 ? "Add a step…" : "Add step", "add-step", "wtr-button wtr-button-small");
     add.addEventListener("click", () => {
       const last = doc.load[doc.load.length - 1];
       update(setLoad(doc, [...doc.load, { rate: last === undefined ? 20 : last.rate, duration: 60 }]));
     });
     loadPanel.append(add);
+  };
+
+  /**
+   * A spiky, random or formula load: the base rate, the pattern's settings, and
+   * what they add up to. The same fields the run surface shows, so a pattern set
+   * here reads the same way when it is steered live.
+   */
+  const renderShapedLoad = (pattern: ShapedPattern): void => {
+    const rate = textInput("wtr-number wtr-number-small");
+    rate.setAttribute("data-load-rate", "0");
+    rate.setAttribute("aria-label", "Base rate");
+    rate.value = String(doc.load[0]?.rate ?? 0);
+    rate.addEventListener("change", () => {
+      // Invalid text is kept as a number so `validateDocument` names the step.
+      update(setLoad(doc, [{ rate: Number(rate.value), duration: doc.load[0]?.duration ?? 3600 }]));
+    });
+    const baseRow = element("label", "wtr-field wtr-load-row");
+    baseRow.append(element("span", "wtr-field-label", "Base"), rate, element("span", "wtr-field-unit", "/s"));
+
+    const error = element("p", "wtr-pattern-error");
+    error.setAttribute("role", "alert");
+    const fields = element("div", "wtr-pattern-inputs");
+    fields.append(
+      ...patternFields(pattern, {
+        baseMeans: "the base rate",
+        refuse: (message) => {
+          error.textContent = message;
+        },
+        apply: (next) => {
+          update(setPattern(doc, next));
+          return true;
+        },
+      }),
+    );
+
+    const summary = element("p", "wtr-pattern-note");
+    summary.dataset["patternSummary"] = "";
+    const laid = patternSegments(pattern, doc.load[0]?.rate ?? 0, { from: 0, seed: doc.seed, limit: Infinity });
+    if (laid.ok) summary.textContent = summarizePattern(laid);
+
+    loadPanel.append(baseRow, fields, summary, error);
   };
 
   // ------------------------------------------------------------ assumptions

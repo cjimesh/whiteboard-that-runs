@@ -274,6 +274,17 @@ body {
   flex-basis: 100%;
 }
 
+/* The editor's column spreads a label and its control to the two edges. A rate
+   and its unit, or a row of pattern settings, read as one phrase instead. */
+.wtr-load .wtr-load-row.wtr-field,
+.wtr-load .wtr-pattern-inputs .wtr-field {
+  justify-content: flex-start;
+}
+
+.wtr-load .wtr-pattern-inputs {
+  margin: 4px 0;
+}
+
 .wtr-preset-note {
   margin: 0;
   font-size: 0.8rem;
