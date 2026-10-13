@@ -92,6 +92,11 @@ export interface EditorOptions {
    * just opened from a file, or just started from a shape.
    */
   onClean?: (document: WhiteboardDocument) => void;
+  /**
+   * What Undo goes back to first: the model before changes were kept from a run,
+   * so keeping them is undone like any edit made here.
+   */
+  undoTo?: WhiteboardDocument;
 }
 
 function element<K extends keyof HTMLElementTagNameMap>(
@@ -249,7 +254,7 @@ const HISTORY_LIMIT = 100;
 
 export function createEditorSurface(options: EditorOptions): EditorSurface {
   let doc = options.document ?? emptyDocument();
-  const past: WhiteboardDocument[] = [];
+  const past: WhiteboardDocument[] = options.undoTo === undefined ? [] : [options.undoTo];
   const future: WhiteboardDocument[] = [];
 
   let selected: { kind: "component"; id: string } | { kind: "edge"; from: string; to: string } | null = null;

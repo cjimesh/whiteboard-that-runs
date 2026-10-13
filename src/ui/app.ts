@@ -23,6 +23,7 @@
  */
 import { createModelSimulation } from "../specs/registry.ts";
 import { toTimeline, type WhiteboardDocument } from "../model/document.ts";
+import { keepRunChanges, type RunChanges } from "../model/keep.ts";
 import { controlsForDocument, type RunControls } from "./controls.ts";
 import { demoControls, demoDocument, demoGuidance, demoTimeline } from "./demo.ts";
 import { createEditorSurface, labelOf, whollyAssumed, type EditorSurface } from "./editor-surface.ts";
@@ -61,6 +62,12 @@ export function mountApp(root: HTMLElement): AppHandle {
   /** The last document with nothing to lose, compared by content. */
   let clean = JSON.stringify(editing);
 
+  /**
+   * The model as it was before the first "Keep these changes" since the editor was
+   * last open, so the editor can offer one Undo back to it.
+   */
+  let beforeKeep: WhiteboardDocument | null = null;
+
   const unsaved = (): boolean => JSON.stringify(editor?.document() ?? editing) !== clean;
   const onBeforeUnload = (event: BeforeUnloadEvent): void => {
     if (!unsaved()) return;
@@ -82,6 +89,17 @@ export function mountApp(root: HTMLElement): AppHandle {
     const sim = createModelSimulation(timeline);
     const surface = createRunSurface(sim, controls, {
       onEdit: () => showEditor(),
+      // Only a run started from the editor can keep its changes. The opening demo
+      // runs a hand-written timeline whose names are not the editable model's
+      // (`api-1` there, `service-1` here), so what it kept would quietly miss.
+      ...(document === undefined
+        ? {}
+        : {
+            onKeep: (changes: RunChanges) => {
+              beforeKeep ??= editing;
+              editing = keepRunChanges(editing, changes);
+            },
+          }),
       comparison,
       ...(guidance === undefined ? {} : { guidance }),
       // What the author called things, and which numbers are still guesses — said
@@ -102,8 +120,11 @@ export function mountApp(root: HTMLElement): AppHandle {
 
   const showEditor = (): void => {
     current?.destroy();
+    const undoTo = beforeKeep !== null && beforeKeep !== editing ? beforeKeep : undefined;
+    beforeKeep = null;
     const surface = createEditorSurface({
       document: editing,
+      ...(undoTo === undefined ? {} : { undoTo }),
       onRun: (document) => {
         // Kept so leaving the run surface returns to the model as authored,
         // rather than to whatever was open before it.

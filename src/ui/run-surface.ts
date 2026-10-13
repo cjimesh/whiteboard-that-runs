@@ -39,6 +39,7 @@ import { createValidationPanel, type ValidationPanel } from "./validation-panel.
 import { createVerdictPanel, type VerdictPanel } from "./verdict-panel.ts";
 import type { SweepTarget } from "../verdict/sweep.ts";
 import { PATTERN_LABELS, patternFields } from "./pattern-fields.ts";
+import type { RunChanges } from "../model/keep.ts";
 import {
   DEFAULT_PATTERNS,
   PATTERN_LIMIT_FACTOR,
@@ -108,6 +109,11 @@ export interface RunOptions {
   labels?: ReadonlyMap<string, string>;
   /** Components whose numbers are all still guesses, marked as such on the box. */
   assumed?: ReadonlySet<string>;
+  /**
+   * Write the run's current settings back into the model ("Keep these changes").
+   * Offered only when there is a model to write them into.
+   */
+  onKeep?: (changes: RunChanges) => void;
 }
 
 export function createRunSurface(
@@ -165,7 +171,18 @@ export function createRunSurface(
     sim.recorded().model.nodes.map((node) => [node.id, node.spec as PartialComponentSpec]),
   );
 
+  // Copies the run's settings into the model. Live changes are experiments until
+  // the driver says otherwise, so it is a button and never automatic, and it
+  // stays disabled until there is something to keep.
+  const keep = element("button", "wtr-button", "Keep these changes");
+  keep.type = "button";
+  keep.dataset["action"] = "keep";
+  keep.disabled = true;
+  keep.title = "Make the settings on this screen part of the model, so Edit model and Save carry them.";
+
   const markSteered = (): void => {
+    keep.disabled = false;
+    keep.textContent = "Keep these changes";
     // A breaking point already on screen was worked out for the design as it was
     // a moment ago, so any change makes it a claim about a different system.
     verdict?.markStale();
@@ -324,6 +341,7 @@ export function createRunSurface(
 
   const transport = element("div", "wtr-transport");
   transport.append(playPause, speed, loadField, patternField, rerun, armToggle, breakingPoint, present, validate);
+  if (options.onKeep !== undefined) transport.append(keep);
 
   if (options.onEdit !== undefined) {
     const edit = element("button", "wtr-button", "Edit model");
@@ -587,6 +605,7 @@ export function createRunSurface(
   // somebody's dashboard, not a thing to drag. It records a `set-source-rate`
   // rather than a spec change, because other traffic is not a property of the
   // component — the component does not know who is calling it.
+  const sourceRates = new Map(controls.traffic.map((control) => [control.sourceId, control.base]));
   for (const control of controls.traffic) {
     const input = element("input", "wtr-number");
     input.type = "text";
@@ -608,6 +627,7 @@ export function createRunSurface(
       }
       error.textContent = "";
       sim.record({ kind: "set-source-rate", sourceId: control.sourceId, rate });
+      sourceRates.set(control.sourceId, rate);
       markSteered();
       logChange(`${control.label} → ${rate}/s`);
       player?.repaint();
@@ -1130,6 +1150,17 @@ export function createRunSurface(
   };
 
   const rerunClean = (): void => rerunOn(showing);
+
+  keep.addEventListener("click", () => {
+    options.onKeep?.({
+      specs: new Map(specs),
+      calls: new Map(callPolicies),
+      sources: new Map(sourceRates),
+      load: { base: Number(loadInput.value), pattern },
+    });
+    keep.disabled = true;
+    keep.textContent = "Kept in the model";
+  });
   rerun.addEventListener("click", rerunClean);
 
   for (const [arm, button] of armButtons) {

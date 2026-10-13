@@ -143,6 +143,72 @@ describe("a load pattern set in the editor", () => {
   });
 });
 
+describe("keeping a run's changes", () => {
+  const change = (selector: string, value: string): void => {
+    const node = root.querySelector<HTMLInputElement | HTMLSelectElement>(selector);
+    if (node === null) throw new Error(`no element matching ${selector}`);
+    node.value = value;
+    node.dispatchEvent(new window.Event("change", { bubbles: true }));
+  };
+  const keep = (): HTMLButtonElement | null => root.querySelector<HTMLButtonElement>('[data-action="keep"]');
+  const capacity = (): string | undefined =>
+    root.querySelector<HTMLInputElement>('[data-action="capacity:datastore-1"]')?.value;
+
+  it("is not offered on the opening demo, whose names are not the model's", () => {
+    app = mountApp(root);
+    expect(keep()).toBeNull();
+  });
+
+  it("is offered once something has changed", () => {
+    app = mountApp(root);
+    click('[data-action="edit"]');
+    click('[data-action="run"]');
+    expect(keep()?.disabled).toBe(true);
+    change('[data-action="capacity:datastore-1"]', "80");
+    expect(keep()?.disabled).toBe(false);
+  });
+
+  it("carries the change into the editor and the next run", () => {
+    app = mountApp(root);
+    click('[data-action="edit"]');
+    click('[data-action="run"]');
+    change('[data-action="capacity:datastore-1"]', "80");
+    click('[data-action="keep"]');
+    expect(keep()?.textContent).toBe("Kept in the model");
+    expect(app.unsaved()).toBe(true);
+
+    click('[data-action="edit"]');
+    click('[data-action="run"]');
+    expect(capacity()).toBe("80");
+  });
+
+  it("can be undone in the editor, like an edit made there", () => {
+    app = mountApp(root);
+    click('[data-action="edit"]');
+    click('[data-action="run"]');
+    const before = capacity();
+    change('[data-action="capacity:datastore-1"]', "80");
+    click('[data-action="keep"]');
+
+    click('[data-action="edit"]');
+    expect(root.querySelector<HTMLButtonElement>('[data-action="undo"]')?.disabled).toBe(false);
+    click('[data-action="undo"]');
+    click('[data-action="run"]');
+    expect(capacity()).toBe(before);
+  });
+
+  it("leaves the model alone when the run is left without keeping", () => {
+    app = mountApp(root);
+    click('[data-action="edit"]');
+    click('[data-action="run"]');
+    const before = capacity();
+    change('[data-action="capacity:datastore-1"]', "80");
+    click('[data-action="edit"]');
+    click('[data-action="run"]');
+    expect(capacity()).toBe(before);
+  });
+});
+
 describe("leaving with work nobody saved", () => {
   const leave = (): Event => {
     const event = new window.Event("beforeunload", { cancelable: true });

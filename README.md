@@ -41,7 +41,8 @@ send to someone.
   long does one take?**, and shows the capacity they imply.
 - **Run it and steer it live.** Drag the load, change a timeout, switch a retry policy, or turn off
   another team's traffic. Each change applies to the running simulation without a restart and
-  appears as a chip under the canvas, and the whole session can be replayed exactly.
+  appears as a chip under the canvas, and the whole session can be replayed exactly. Changes stay
+  with the run until you press **Keep these changes**, which makes them part of the model.
 - **Shape the traffic.** Choose steady, spiky, or random load, a schedule of steps, or a formula of
   your own. The pattern is saved with the model. See [Load patterns](#load-patterns).
 - **Find the breaking point.** One button brackets the sustained rate the design holds to, names
@@ -70,6 +71,11 @@ send to someone.
   one more click marks it as measured.
 - **Run and steer.** Press **Run ▸**, then click a box to open its controls. The component that fails
   first opens on its own.
+- **Keep what the room agreed.** Changes made during a run are experiments and leave the model alone.
+  When one becomes the design, press **Keep these changes** (on any run started from the editor;
+  the opening tour does not offer it). The run's settings are copied into the
+  model, every number that moved is marked as stated, and **Save** writes them to the file. Undo in
+  the editor takes them back.
 - **Save and open.** **Save** downloads the model as a `.whiteboard.json` file, and **Open…** loads
   one back. The browser asks before you close the page with unsaved changes.
 
