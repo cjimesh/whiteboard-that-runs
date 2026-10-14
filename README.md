@@ -164,17 +164,21 @@ and give it a name and a rate. That traffic occupies the component's servers, qu
 kept out of the whole-path totals. Its rate is a live control, so "what if the batch job were not
 running" takes one keystroke during a run.
 
-**Amber and red.** Red means a box is losing work; amber means it is working hard. A box turns
-**red** when, in the last 1.5 seconds of the run, it turned requests away (its queue was full, or it
-shed old work) or finished work whose caller had already given up waiting. The second case is how a
-very deep queue fails: nothing is turned away, but every caller times out before its answer arrives,
-so the work is done for nobody. A box turns **amber** when its servers were busy at least 85% of the
-time, or its queue is at least 20% full at that moment. A full queue on its own is amber, not red,
-because a queue that has just absorbed a burst may be draining. Both red conditions count things that
-happened, so one late answer is enough: the demo's database turns red for a moment now and then even
-at its resting load, when a rare slow call outlasts the timeout. When several boxes are red, the one
-with no red box after it in the chain is tagged **first to fold**, and the rest are marked
-**carrying**, because a caller that waits on a stuck dependency turns red with it. The amber
+**Amber and red.** Red means a box is losing work; amber means it is working hard. The same
+conditions are in the legend on the run screen.
+
+- **Red:** in the last 1.5 seconds, the box turned requests away (its queue was full, or it shed old
+  work), or it finished work whose caller had already given up waiting.
+- **Amber:** its servers were busy at least 85% of the time, or its queue is at least 20% full.
+- **Green:** neither.
+
+A full queue on its own is amber, not red, because a queue that has just absorbed a burst may be
+draining. The second red condition is how a very deep queue fails: nothing is turned away, but every
+caller times out before its answer arrives, so the work is done for nobody. Both red conditions count
+things that happened, so one late answer is enough: the demo's database turns red for a moment now
+and then even at its resting load, when a rare slow call outlasts the timeout. When several boxes
+are red, the one with no red box after it in the chain is tagged **first to fold**, and the rest are
+marked **carrying**, because a caller that waits on a stuck dependency turns red with it. The amber
 thresholds are judgement calls, not measurements. A box with no timeout anywhere in front of it can
 fall further and further behind without losing anything, so it stays amber; **Breaking point** looks
 for work that keeps piling up, so it catches that case.

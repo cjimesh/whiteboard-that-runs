@@ -423,11 +423,14 @@ body {
 }
 
 .wtr-legend-item strong {
+  flex-shrink: 0;
   color: var(--text);
   font-weight: 600;
 }
 
+/* Fixed size: a long meaning beside it squeezed the swatch to a sliver. */
 .wtr-swatch {
+  flex-shrink: 0;
   width: 11px;
   height: 11px;
   border-radius: 3px;
@@ -435,6 +438,8 @@ body {
   background: var(--muted);
 }
 
+.wtr-swatch-fold { background: var(--fold); }
+.wtr-swatch-strain { background: var(--strain); }
 .wtr-swatch-utilization { background: var(--ok); }
 .wtr-swatch-queue { background: var(--accent); }
 .wtr-swatch-ribbon { background: rgba(76, 194, 255, 0.45); }

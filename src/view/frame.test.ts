@@ -406,8 +406,23 @@ describe("the legend explains only what this model uses", () => {
     expect(cache?.meaning).toMatch(/input/);
   });
 
-  it("always explains the three encodings every model uses", () => {
+  it("leads with what red and amber mean, quoting the numbers the rule uses", () => {
+    const legend = frameAt(20).frame.legend;
+    const [red, amber] = legend;
+
+    expect(red?.swatch).toBe("fold");
+    expect(red?.meaning).toContain("turned requests away");
+    expect(red?.meaning).toContain("given up on");
+    expect(red?.meaning).toContain("1.5 s");
+    expect(amber?.swatch).toBe("strain");
+    expect(amber?.meaning).toContain("85%");
+    expect(amber?.meaning).toContain("20%");
+  });
+
+  it("always explains the encodings every model uses", () => {
     const swatches = frameAt(20).frame.legend.map((item) => item.swatch);
+    expect(swatches).toContain("fold");
+    expect(swatches).toContain("strain");
     expect(swatches).toContain("utilization");
     expect(swatches).toContain("queue");
     expect(swatches).toContain("ribbon");

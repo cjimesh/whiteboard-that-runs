@@ -129,7 +129,7 @@ export interface SystemFrame {
   inFlight: number;
 }
 
-export type LegendSwatch = "utilization" | "queue" | "ribbon" | "drops" | "retries" | "cache" | "other-traffic";
+export type LegendSwatch = "fold" | "strain" | "utilization" | "queue" | "ribbon" | "drops" | "retries" | "cache" | "other-traffic";
 
 export interface LegendItem {
   swatch: LegendSwatch;
@@ -290,6 +290,12 @@ export interface FrameInput {
 }
 
 const DEFAULT_WINDOW = 1.5;
+
+/**
+ * Where amber starts. Named because the legend quotes them: a colour key that
+ * restated these numbers in prose would drift the first time one was tuned.
+ */
+const STRAIN = { utilization: 0.85, queueFill: 0.2 } as const;
 /** Ribbon thickness at a rate that fills the widest ribbon drawn. */
 const RIBBON_REFERENCE_RATE = 200;
 const RIBBON_WIDTH = { min: 1.5, max: 22 };
@@ -346,7 +352,7 @@ function healthOf(utilization: number, queueFill: number, dropRate: number, wast
   //
   // Amber means working hard or queueing: the warning, not the verdict.
   if (dropRate > 0 || wastedRate > 0) return "fold";
-  if (utilization >= 0.85 || queueFill >= 0.2) return "strain";
+  if (utilization >= STRAIN.utilization || queueFill >= STRAIN.queueFill) return "strain";
   return "ok";
 }
 
@@ -437,11 +443,30 @@ function reasonFor(node: NodeFrame): string {
   return `it is ${losses}`;
 }
 
-function legendFor(model: ModelSnapshot, nodes: NodeFrame[]): LegendItem[] {
+function legendFor(model: ModelSnapshot, nodes: NodeFrame[], window: number): LegendItem[] {
   // Only encodings this model actually uses. A legend explaining retry storms to
   // someone looking at a model with no retries teaches them to see something
   // that is not there.
+  //
+  // Red and amber come first and always: any model can show them, and "why is
+  // that box red?" is the first question anybody asks of the picture.
+  const percent = (fraction: number): string => `${Math.round(fraction * 100)}%`;
   const items: LegendItem[] = [
+    {
+      swatch: "fold",
+      term: "Red",
+      meaning:
+        `Losing work. In the last ${window} s it turned requests away, or finished work its caller had already ` +
+        "given up on. The red box marked FIRST TO FOLD is the cause; boxes marked carrying are red because they " +
+        "are waiting on it.",
+    },
+    {
+      swatch: "strain",
+      term: "Amber",
+      meaning:
+        `Working hard, losing nothing. Busy at least ${percent(STRAIN.utilization)} of the time, or its queue is ` +
+        `at least ${percent(STRAIN.queueFill)} full. A full queue on its own is amber, not red.`,
+    },
     {
       swatch: "utilization",
       term: "Fill",
@@ -576,7 +601,7 @@ export function emptyFrame(model: ModelSnapshot, box: Box = LAYOUT_BOX): Frame {
     nodes,
     edges: routeAround(edges, nodes, box),
     system: { offered: 0, goodput: 0, dropRate: 0, latencyP95: 0, inFlight: 0 },
-    legend: legendFor(model, nodes),
+    legend: legendFor(model, nodes, DEFAULT_WINDOW),
     culprit: null,
   };
 }
@@ -727,7 +752,7 @@ export function frameFor(input: FrameInput): Frame {
       latencyP95: buckets[buckets.length - 1]?.system.latencyP95 ?? 0,
       inFlight: snapshot.inFlight,
     },
-    legend: legendFor(model, nodes),
+    legend: legendFor(model, nodes, window),
     culprit,
   };
 }
