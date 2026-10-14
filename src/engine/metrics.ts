@@ -34,6 +34,14 @@ export interface NodeBucket {
   /** Jobs that left this node — forwarded on or completed. */
   departures: number;
   drops: number;
+  /**
+   * Jobs this node served for a caller that had already stopped waiting.
+   *
+   * The work was done and its result is thrown away, so for whoever asked it is
+   * as lost as a drop. A deep queue in overload loses work this way rather than
+   * by dropping it: nothing is turned away, every caller times out first.
+   */
+  wasted: number;
   timeouts: number;
   retries: number;
   /** Time spent in this node, per job that left it during the window. */
@@ -128,6 +136,7 @@ interface NodeAccumulator {
   arrivals: number;
   departures: number;
   drops: number;
+  wasted: number;
   timeouts: number;
   retries: number;
   sojourns: number[];
@@ -142,6 +151,7 @@ function newNode(at: number): NodeAccumulator {
     arrivals: 0,
     departures: 0,
     drops: 0,
+    wasted: 0,
     timeouts: 0,
     retries: 0,
     sojourns: [],
@@ -156,6 +166,7 @@ export interface MetricsRecorder {
   nodeArrival(nodeId: string): void;
   nodeDeparture(nodeId: string, sojourn: number): void;
   nodeDrop(nodeId: string): void;
+  nodeWasted(nodeId: string): void;
   nodeTimeout(nodeId: string): void;
   nodeRetry(nodeId: string): void;
   setQueueDepth(nodeId: string, depth: number): void;
@@ -230,6 +241,9 @@ export function createMetrics(nodeIds: readonly string[], now: () => number): Me
     },
     nodeDrop(nodeId) {
       accumulator(nodeId).drops += 1;
+    },
+    nodeWasted(nodeId) {
+      accumulator(nodeId).wasted += 1;
     },
     nodeTimeout(nodeId) {
       accumulator(nodeId).timeouts += 1;
@@ -317,6 +331,7 @@ export function createMetrics(nodeIds: readonly string[], now: () => number): Me
           arrivals: node.arrivals,
           departures: node.departures,
           drops: node.drops,
+          wasted: node.wasted,
           timeouts: node.timeouts,
           retries: node.retries,
           sojournMean:
@@ -335,6 +350,7 @@ export function createMetrics(nodeIds: readonly string[], now: () => number): Me
         node.arrivals = 0;
         node.departures = 0;
         node.drops = 0;
+        node.wasted = 0;
         node.timeouts = 0;
         node.retries = 0;
         node.sojourns = [];

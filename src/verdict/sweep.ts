@@ -211,9 +211,10 @@ function runProbe(target: SweepTarget, rate: number, seed: string, budget: Sweep
     return { verdict, culprit: { id: frame.culprit.id, reason: frame.culprit.reason } };
   }
 
-  // The canvas names a component when work is being *lost* or a buffer is
-  // filling. A design with generous queues folds without either: nothing is
-  // dropped, no buffer looks full, and work simply piles up — and the readout
+  // The canvas names a component when work is being *lost*: turned away, or
+  // served after its caller gave up. A design with generous queues and no
+  // timeouts folds without either: nothing is dropped, nobody gives up, and work
+  // simply piles up — and the readout
   // then reported a breaking point with nobody responsible for it. Found by
   // drawing a real system, whose queues were configured far larger than
   // anything that ever fills.

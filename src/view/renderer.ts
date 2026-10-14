@@ -331,7 +331,9 @@ function drawNode(ctx: CanvasRenderingContext2D, node: NodeFrame, box: Box, deco
   roundRect(ctx, x + pad, barY, barW, 5, 2.5);
   ctx.fill();
   if (node.queueFill > 0) {
-    ctx.fillStyle = node.queueFill >= 0.6 ? accent : COLORS.queue;
+    // The bar takes the box's colour only when the box is losing work, so a
+    // nearly full bar on an amber box does not read as a red one.
+    ctx.fillStyle = node.health === "fold" ? accent : COLORS.queue;
     roundRect(ctx, x + pad, barY, Math.max(2, barW * node.queueFill), 5, 2.5);
     ctx.fill();
   }

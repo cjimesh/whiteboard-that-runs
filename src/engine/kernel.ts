@@ -331,6 +331,15 @@ export function createSimulation(timeline: Timeline, registry: BehaviorRegistry)
   }
 
   /**
+   * Served for nobody: the caller gave up on this attempt before this node got to
+   * it. Counted where the work was done, at every node it passes through, because
+   * each of them spent capacity on it. A drop is already counted as a drop.
+   */
+  function countWaste(nodeId: string, job: InternalJob): void {
+    if (job.call?.abandoned === true) metrics.nodeWasted(nodeId);
+  }
+
+  /**
    * Close out a job: tell whoever was waiting, or close the books on the request.
    *
    * A job whose caller has already given up settles into nothing. That is the
@@ -394,6 +403,7 @@ export function createSimulation(timeline: Timeline, registry: BehaviorRegistry)
         if (!downstream.has(nodeId)) {
           throw new Error(`node "${id}" forwarded to "${nodeId}", which is not a node in this model`);
         }
+        countWaste(id, internal);
         leave(internal);
         // Immediate in sim time: an edge is a wire, not a delay. Anything that
         // should cost time belongs to a node's service, where it is visible.
@@ -422,6 +432,7 @@ export function createSimulation(timeline: Timeline, registry: BehaviorRegistry)
       finish(job) {
         const internal = job as InternalJob;
         if (internal.settled) throw new Error(`job ${job.id} was finished twice`);
+        countWaste(id, internal);
         leave(internal);
         settle(internal, "ok");
       },

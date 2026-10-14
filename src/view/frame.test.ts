@@ -222,6 +222,82 @@ describe("health is a visual signal, not the verdict", () => {
     expect(nodeIn(frame, "db").health).toBe("strain");
     expect(nodeIn(frame, "db").dropRate).toBe(0);
   });
+
+  it("reads straining, not folding, when a queue is mostly full but losing nothing", () => {
+    // A burst fills the queue, then it drains. A full-looking bar on a component
+    // that is catching up is not a failure, and red used to say it was (60% full
+    // was enough).
+    const { frame } = frameAt(4, {
+      model: {
+        entryId: "db",
+        nodes: [
+          {
+            id: "db",
+            kind: "datastore",
+            spec: {
+              concurrency: 1,
+              service: { policy: "fixed", mean: 0.05 },
+              queue: { policy: "fifo", capacity: 200 },
+            },
+          },
+        ],
+        edges: [],
+      },
+      load: [
+        { rate: 100, duration: 2 },
+        { rate: 10, duration: 600 },
+      ],
+    });
+
+    const db = nodeIn(frame, "db");
+    expect(db.queueFill).toBeGreaterThanOrEqual(0.6);
+    expect(db.dropRate).toBe(0);
+    expect(db.wastedRate).toBe(0);
+    expect(db.health).toBe("strain");
+  });
+
+  it("reads folding when callers give up on a deep queue that never fills, and names it", () => {
+    // The failure a fullness rule cannot see: the queue is far too deep to fill,
+    // so nothing is turned away, and every caller times out before its answer
+    // comes back. The database is working flat out for nobody.
+    const { frame } = frameAt(60, {
+      model: {
+        entryId: "api",
+        nodes: [
+          {
+            id: "api",
+            kind: "service",
+            spec: {
+              concurrency: 200,
+              service: { policy: "fixed", mean: 0.001 },
+              queue: { policy: "fifo", capacity: 1_000 },
+              timeout: { policy: "fixed", after: 0.25 },
+              retry: { policy: "none", attempts: 0, delay: 0, factor: 2, maxDelay: 1 },
+            },
+          },
+          {
+            id: "db",
+            kind: "datastore",
+            spec: {
+              concurrency: 1,
+              service: { policy: "exponential", mean: 0.02 },
+              queue: { policy: "fifo", capacity: 100_000 },
+            },
+          },
+        ],
+        edges: [{ from: "api", to: "db" }],
+      },
+      load: [{ rate: 70, duration: 600 }],
+    });
+
+    const db = nodeIn(frame, "db");
+    expect(db.queueFill).toBeLessThan(0.2);
+    expect(db.dropRate).toBe(0);
+    expect(db.wastedRate).toBeGreaterThan(0);
+    expect(db.health).toBe("fold");
+    expect(frame.culprit?.id).toBe("db");
+    expect(frame.culprit?.reason).toContain("its callers already gave up on");
+  });
 });
 
 describe("ribbons", () => {

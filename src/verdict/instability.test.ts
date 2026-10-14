@@ -23,6 +23,7 @@ function node(overrides: Partial<NodeBucket> = {}): NodeBucket {
     arrivals: 0,
     departures: 0,
     drops: 0,
+    wasted: 0,
     timeouts: 0,
     retries: 0,
     sojournMean: 0,

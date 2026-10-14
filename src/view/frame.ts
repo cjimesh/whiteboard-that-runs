@@ -68,6 +68,8 @@ export interface NodeFrame {
   throughput: number;
   /** Drops per second over the window. */
   dropRate: number;
+  /** Work served for a caller that had already given up, per second over the window. */
+  wastedRate: number;
   /** Retries this component issued, per second over the window. */
   retryRate: number;
   /**
@@ -324,7 +326,7 @@ function secondsCovered(buckets: readonly BucketSample[]): number {
   return Math.max(last.end - first.start, Number.EPSILON);
 }
 
-function healthOf(utilization: number, queueFill: number, dropRate: number): Health {
+function healthOf(utilization: number, queueFill: number, dropRate: number, wastedRate: number): Health {
   // Full utilization on its own is *not* folding, and getting this wrong makes the
   // canvas worse rather than merely inaccurate. A server pinned at 100% with a
   // short queue is keeping up — it is being used efficiently. Treating saturation
@@ -332,10 +334,18 @@ function healthOf(utilization: number, queueFill: number, dropRate: number): Hea
   // the two application replicas that were coping fine, which buried the one
   // component actually in trouble in a screen of red.
   //
-  // So red means work is being lost or the buffer is filling: not keeping up.
-  // Amber means working hard. Whether a queue is *diverging* under sustained load
-  // is a slower judgement than one frame can make, and belongs to the sweep (U7).
-  if (dropRate > 0 || queueFill >= 0.6) return "fold";
+  // So red means work is being lost, and only that: turned away, or served after
+  // its caller gave up. Both are counts of something that happened, not a
+  // prediction. A filling queue used to count too (60% full), and it was the
+  // wrong question: a queue that full may be draining after a burst, and a deep
+  // one can be hopelessly behind without ever getting there. Its replacement,
+  // "the queue is growing", is too noisy to judge live: measured on a healthy
+  // single-server datastore, a 1.5 s slope called it growing in 23% of frames at
+  // 80% load, and a 10 s slope still did in 11% at 95%. Sustained growth is the
+  // sweep's judgement (U7), which has minutes to make it.
+  //
+  // Amber means working hard or queueing: the warning, not the verdict.
+  if (dropRate > 0 || wastedRate > 0) return "fold";
   if (utilization >= 0.85 || queueFill >= 0.2) return "strain";
   return "ok";
 }
@@ -416,17 +426,15 @@ export function nodeDepths(model: ModelSnapshot): Map<string, number> {
 
 /** The cause in this component's own numbers, so the claim can be checked. */
 function reasonFor(node: NodeFrame): string {
-  const losing = `losing ${node.dropRate >= 10 ? Math.round(node.dropRate) : node.dropRate.toFixed(1)}/s`;
-  const full = node.queueFill >= 0.6;
-  const saturated = node.utilization >= 0.95;
+  const perSecond = (value: number): string => `${value >= 10 ? Math.round(value) : value.toFixed(1)}/s`;
+  const losses = [
+    ...(node.dropRate > 0 ? [`losing ${perSecond(node.dropRate)}`] : []),
+    ...(node.wastedRate > 0 ? [`serving ${perSecond(node.wastedRate)} its callers already gave up on`] : []),
+  ].join(" and ");
 
-  if (node.dropRate > 0 && full) {
-    return `its queue is full and it is ${losing}`;
-  }
-  if (node.dropRate > 0) {
-    return saturated ? `it is at capacity and ${losing}` : `it is ${losing}`;
-  }
-  return saturated ? "it is at capacity and its queue is filling" : "its queue is filling";
+  if (node.dropRate > 0 && node.queueFill >= 0.6) return `its queue is full and it is ${losses}`;
+  if (node.utilization >= 0.95) return `it is at capacity and ${losses}`;
+  return `it is ${losses}`;
 }
 
 function legendFor(model: ModelSnapshot, nodes: NodeFrame[]): LegendItem[] {
@@ -531,6 +539,7 @@ export function emptyFrame(model: ModelSnapshot, box: Box = LAYOUT_BOX): Frame {
       latency: 0,
       throughput: 0,
       dropRate: 0,
+      wastedRate: 0,
       retryRate: 0,
       otherTraffic: statedTraffic.has(node.id)
         ? {
@@ -621,6 +630,7 @@ export function frameFor(input: FrameInput): Frame {
     const queueDepth = levels?.queueDepth ?? 0;
     const utilization = clamp01(sumNode(node.id, (bucket) => bucket.nodes[node.id]?.utilization ?? 0) / buckets.length);
     const dropRate = rate(sumNode(node.id, (bucket) => bucket.nodes[node.id]?.drops ?? 0));
+    const wastedRate = rate(sumNode(node.id, (bucket) => bucket.nodes[node.id]?.wasted ?? 0));
     const queueFill = Number.isFinite(capacity) && capacity > 0 ? clamp01(queueDepth / capacity) : 0;
 
     return {
@@ -636,9 +646,10 @@ export function frameFor(input: FrameInput): Frame {
       latency: departures === 0 ? 0 : sojournTotal / departures,
       throughput: rate(departures),
       dropRate,
+      wastedRate,
       retryRate: rate(sumNode(node.id, (bucket) => bucket.nodes[node.id]?.retries ?? 0)),
       otherTraffic: otherTrafficAt(node.id),
-      health: healthOf(utilization, queueFill, dropRate),
+      health: healthOf(utilization, queueFill, dropRate, wastedRate),
       role: null,
     };
   });
