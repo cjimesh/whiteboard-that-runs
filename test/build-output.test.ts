@@ -276,7 +276,7 @@ describe("the artifact a stranger opens", () => {
     expect(await tour.getAttribute("data-guidance")).toBe("open");
 
     const steps = page.locator(".wtr-guidance-step");
-    expect(await steps.count()).toBe(5);
+    expect(await steps.count()).toBe(6);
     expect(await steps.first().textContent()).toContain("Drag Load to 44/s");
 
     await page.locator('[data-action="dismiss-guidance"]').click();

@@ -49,7 +49,7 @@ describe("the resting load", () => {
 });
 
 /**
- * The tour makes five claims about this model to somebody who has never seen it.
+ * The tour makes claims about this model to somebody who has never seen it.
  * Each one is checked here against the model itself, because the last time this
  * demo was described in prose the prose was wrong for an entire build.
  */
@@ -72,6 +72,8 @@ describe("the tour tells the truth", () => {
     // be *under* capacity, or the collapse is just arithmetic and the demo has no
     // point to make.
     expect(said).toContain(`${perSecond} a second`);
+    expect(guidance.intro).toContain(`about ${perSecond} requests a second`);
+    expect(guidance.intro).toContain(`at ${DEMO_COLLAPSE_RATE},`);
     expect(DEMO_COLLAPSE_RATE).toBeLessThan(perSecond);
   });
 
@@ -84,7 +86,7 @@ describe("the tour tells the truth", () => {
 
   it("promises a recovery the model delivers, and no more than it delivers", () => {
     // Step four claims goodput comes back within seconds, "most of the way, not
-    // all of it". Both halves are asserted: a tour that oversold the fix would be
+    // all of it", and the intro claims it comes back with one setting. Both halves are asserted: a tour that oversold the fix would be
     // contradicted on screen by the tool it is selling.
     const sim = createModelSimulation({
       ...demoTimeline(),

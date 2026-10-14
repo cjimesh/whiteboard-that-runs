@@ -164,6 +164,17 @@ and give it a name and a rate. That traffic occupies the component's servers, qu
 kept out of the whole-path totals. Its rate is a live control, so "what if the batch job were not
 running" takes one keystroke during a run.
 
+**Amber and red.** Each box is judged on the last 1.5 seconds of the run. It turns **red** when it
+is turning requests away (its queue is full, or it is shedding work), or when its queue is at least
+60% full. It turns **amber** when its servers are busy at least 85% of the time, or when its queue is
+at least 20% full. Being fully busy is not red on its own: a component at 100% with a short queue is
+keeping up. A timeout is not a lost request, so timeouts alone do not turn a box red. When several
+boxes are red, the one with no red box after it in the chain is tagged **first to fold**, and the
+rest are marked **carrying**, because a caller that waits on a stuck dependency turns red with it.
+The thresholds are judgement calls, not measurements. A component with a very deep queue can fall
+behind for a long time without reaching 60% and stays amber; **Breaking point** looks for a queue
+that keeps growing, so it catches that case.
+
 **Proposals and disputed numbers.** Mark components as part of **this month's proposal** to get the
 breaking point with and without them. Mark a number as **disputed** to get the answer across its
 range. A difference smaller than the sweep's resolution is reported as no improvement.

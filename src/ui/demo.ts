@@ -127,7 +127,7 @@ export function demoTimeline(): Timeline {
  * The arc (F3) was built to be *performed*: somebody drags the load and narrates
  * the collapse. Opened cold it is a green system doing nothing, and a viewer with
  * no idea what to touch learns nothing from it. This is the smallest thing that
- * fixes that — five steps, each an action and what to watch for.
+ * fixes that: six steps, each an action and what to watch for.
  *
  * Every figure is computed from the model's own specs. A tour is a set of claims
  * about a system, and claims about this system are supposed to be tested.
@@ -152,23 +152,26 @@ export function demoGuidance(): Guidance {
 
   return {
     title: "A sixty-second tour",
+    // The intro says what is about to happen, not what the tool is: a viewer who
+    // knows the database copes with 50 a second is watching for the moment it
+    // stops coping at 44.
     intro:
-      "This is a simulation, running now — every number on screen is computed from the model beside it, " +
-      "not played back from a recording.",
+      `This database handles about ${dbPerSecond} requests a second. You are about to take it down at ` +
+      `${DEMO_COLLAPSE_RATE}, then bring it back with one setting. Everything on screen is simulated live from the model.`,
     steps: [
       {
         action: `Drag Load to ${DEMO_COLLAPSE_RATE}/s.`,
-        watch: `Nothing here is over capacity: the database manages about ${dbPerSecond} a second.`,
+        watch: `That is still under the database's ${dbPerSecond} a second. Nothing should break.`,
       },
       {
         action: "Watch the database.",
-        watch: `Its queue fills, calls start missing the ${timeoutMs} ms timeout, and each timeout becomes up to ${attempts} retries.`,
+        watch: `Its queue fills, calls miss the ${timeoutMs} ms timeout, and each miss becomes up to ${attempts} retries.`,
       },
       {
-        action: "Watch what the retries do.",
+        action: "Watch Completing at the top.",
         watch:
-          "They are new load on the thing that was already behind, so it falls further behind. Completing goes to zero " +
-          "while every component stays busy.",
+          "The retries are extra load on the component that is already behind. Completing falls to zero while " +
+          "every box stays busy.",
       },
       {
         action: "Set Retry policy to No retries.",
@@ -176,14 +179,21 @@ export function demoGuidance(): Guidance {
         // load the timeout is still clipping roughly a fifth of calls once the
         // retries stop, so goodput comes back to most of the offered load rather
         // than all of it. A tour that promised a total recovery would be selling
-        // the tool with a claim the tool itself contradicts on screen.
+        // the tool with a claim the tool itself contradicts on screen. The point
+        // leads; the caveat follows it.
         watch:
-          `Completing comes back within seconds, with nothing restarted — most of the way, not all of it: ` +
-          `the ${timeoutMs} ms timeout still clips calls at this load. The design was never short of capacity.`,
+          "Completing comes back within seconds, with nothing restarted. The system had the capacity all along; " +
+          `the retries were what failed it. (It recovers most of the way, not all of it: the ${timeoutMs} ms ` +
+          "timeout still cuts off some calls at this load.)",
       },
       {
         action: "Press Breaking point.",
-        watch: "It runs the design headless at one rate after another and brackets the load it actually holds.",
+        watch: "It tries one load after another and reports the range where this design stops coping.",
+      },
+      {
+        // The tour ends on the reader's own system, not on the demo's.
+        action: "Press Edit model.",
+        watch: "Try the same thing on your own system.",
       },
     ],
   };
