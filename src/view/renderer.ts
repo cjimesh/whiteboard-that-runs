@@ -239,13 +239,13 @@ function drawNode(ctx: CanvasRenderingContext2D, node: NodeFrame, box: Box, deco
     ctx.fillStyle = COLORS.fold;
     ctx.font = "600 11px ui-sans-serif, system-ui, sans-serif";
     ctx.textBaseline = "bottom";
-    ctx.fillText("FIRST TO FOLD", x, y - 9, w);
+    ctx.fillText("CAUSE", x, y - 9, w);
     ctx.textBaseline = "top";
   } else if (node.role === "carrier") {
     ctx.fillStyle = COLORS.muted;
     ctx.font = "11px ui-sans-serif, system-ui, sans-serif";
     ctx.textBaseline = "bottom";
-    ctx.fillText("carrying", x, y - 9, w);
+    ctx.fillText("knock-on", x, y - 9, w);
     ctx.textBaseline = "top";
   }
 

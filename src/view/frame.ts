@@ -53,7 +53,11 @@ export interface NodeFrame {
   label: string;
   kind: ComponentKind;
   place: Placement;
-  /** Set only while `health` is `fold`. */
+  /**
+   * Set on every component losing work, and on the one they are losing it
+   * because of — which is not always losing anything itself (see
+   * `attributeFolding`).
+   */
   role: FoldRole | null;
   /** 0 to 1, busy servers over declared servers. */
   utilization: number;
@@ -296,6 +300,12 @@ const DEFAULT_WINDOW = 1.5;
  * restated these numbers in prose would drift the first time one was tuned.
  */
 const STRAIN = { utilization: 0.85, queueFill: 0.2 } as const;
+/**
+ * Busy this much of the time, a component waited on by something losing work is
+ * taken to be the reason. Close to 1 on purpose: a component at 90% is coping,
+ * and the gap between "coping" and "the limit" is where a wrong accusation lives.
+ */
+const SATURATED = 0.95;
 /** Ribbon thickness at a rate that fills the widest ribbon drawn. */
 const RIBBON_REFERENCE_RATE = 200;
 const RIBBON_WIDTH = { min: 1.5, max: 22 };
@@ -357,16 +367,27 @@ function healthOf(utilization: number, queueFill: number, dropRate: number, wast
 }
 
 /**
- * Which folding component is the cause, and which are downstream of the blame.
+ * Which component is the cause, and which are losing work because of it.
  *
- * The rule is causal and follows the wiring: **a folding component with another
- * folding component behind it is a carrier, not an origin.** In a call-and-wait
+ * The rule is causal and follows the wiring: **a component in trouble with
+ * another in trouble behind it is a carrier, not an origin.** In a call-and-wait
  * graph a caller holds its server while the callee answers, so a saturated
  * datastore drags its callers down with it — the caller's red is borrowed.
  *
+ * "In trouble" is wider than "losing work", and it has to be. A caller that
+ * waits can only send as much as its own servers hold, so the component it waits
+ * on sees a bounded backlog: it is pinned at full capacity, it never turns
+ * anything away, and its queue never grows. All the loss shows up at the caller,
+ * whose queue is the one that fills. A rule that only looked at loss named the
+ * caller — the victim — in the starting shapes themselves (measured: an app and
+ * database with a 200/s database, folding at 212/s, named the app). So a
+ * component that something losing work *waits on*, through any number of hops,
+ * is in trouble too when it is busy at least `SATURATED` of the time. It is the
+ * cause without being red, and the reason says so.
+ *
  * Ties and cycles are settled by depth (longest path from a source), so the
- * deepest folding component wins. A cycle where everything folds has no node
- * without a folding successor, and would otherwise name nobody.
+ * deepest component in trouble wins. A cycle where everything is in trouble has
+ * no node without one behind it, and would otherwise name nobody.
  *
  * Two components failing independently is a real possibility this reports
  * imperfectly: it names the deeper one and lists the other as carrying. That is
@@ -377,29 +398,67 @@ function attributeFolding(model: ModelSnapshot, nodes: NodeFrame[]): Culprit | n
   const folding = nodes.filter((node) => node.health === "fold");
   if (folding.length === 0) return null;
 
-  const foldingIds = new Set(folding.map((node) => node.id));
   const downstream = new Map<string, string[]>();
   for (const node of model.nodes) downstream.set(node.id, []);
   for (const edge of model.edges) downstream.get(edge.from)?.push(edge.to);
 
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const troubled = new Map(folding.map((node) => [node.id, node]));
+  for (const node of folding) {
+    if (!holdsWhileWaiting(model, node.id)) continue;
+    for (const id of reachableFrom(downstream, node.id)) {
+      const waitedOn = byId.get(id);
+      if (waitedOn !== undefined && waitedOn.utilization >= SATURATED) troubled.set(id, waitedOn);
+    }
+  }
+
   const depth = nodeDepths(model);
-  const deepestFirst = [...folding].sort((a, b) => (depth.get(b.id) ?? 0) - (depth.get(a.id) ?? 0));
+  const deepestFirst = [...troubled.values()].sort((a, b) => (depth.get(b.id) ?? 0) - (depth.get(a.id) ?? 0));
 
   const origin =
-    deepestFirst.find((node) => !(downstream.get(node.id) ?? []).some((id) => foldingIds.has(id))) ??
+    deepestFirst.find((node) => !(downstream.get(node.id) ?? []).some((id) => troubled.has(id))) ??
     deepestFirst[0];
   if (origin === undefined) return null;
 
-  for (const node of folding) node.role = node.id === origin.id ? "origin" : "carrier";
+  origin.role = "origin";
+  const carrying = folding
+    .filter((node) => node.id !== origin.id)
+    .sort((a, b) => (depth.get(b.id) ?? 0) - (depth.get(a.id) ?? 0));
+  for (const node of carrying) node.role = "carrier";
 
-  return {
-    id: origin.id,
-    reason: reasonFor(origin),
-    carrying: folding
-      .filter((node) => node.id !== origin.id)
-      .sort((a, b) => (depth.get(b.id) ?? 0) - (depth.get(a.id) ?? 0))
-      .map((node) => node.id),
-  };
+  return { id: origin.id, reason: reasonFor(origin), carrying: carrying.map((node) => node.id) };
+}
+
+/**
+ * Whether this component keeps a server occupied while something after it works.
+ *
+ * A dependency call always does. A hand-off does when the component calls and
+ * waits — a service by default, a queue or cache only when told to; a balancer
+ * and a datastore pass work on and are done with it. What it waits *for* is the
+ * whole road the request travels from there, because a forwarded request is the
+ * same request and the caller is answered only when it finishes.
+ */
+function holdsWhileWaiting(model: ModelSnapshot, id: string): boolean {
+  const edges = model.edges.filter((edge) => edge.from === id);
+  if (edges.some((edge) => edge.kind === "call")) return true;
+  if (edges.length === 0) return false;
+  const node = model.nodes.find((candidate) => candidate.id === id);
+  if (node === undefined || !WAITING_KINDS.has(node.kind as ComponentKind)) return false;
+  return resolveSpec(node.kind as ComponentKind, node.spec as PartialComponentSpec).downstream.policy === "call-and-wait";
+}
+
+const WAITING_KINDS: ReadonlySet<ComponentKind> = new Set(["service", "queue", "cache"]);
+
+function reachableFrom(downstream: ReadonlyMap<string, readonly string[]>, from: string): Set<string> {
+  const seen = new Set<string>();
+  const queue = [...(downstream.get(from) ?? [])];
+  while (queue.length > 0) {
+    const id = queue.shift() as string;
+    if (seen.has(id) || id === from) continue;
+    seen.add(id);
+    queue.push(...(downstream.get(id) ?? []));
+  }
+  return seen;
 }
 
 /**
@@ -438,6 +497,13 @@ function reasonFor(node: NodeFrame): string {
     ...(node.wastedRate > 0 ? [`serving ${perSecond(node.wastedRate)} its callers already gave up on`] : []),
   ].join(" and ");
 
+  // The cause without being red: everything waiting on it is losing the work.
+  if (losses === "") {
+    return (
+      `it is at capacity, busy ${Math.round(node.utilization * 100)}% of the time; it loses nothing itself, ` +
+      "so the loss shows up in what waits on it"
+    );
+  }
   if (node.dropRate > 0 && node.queueFill >= 0.6) return `its queue is full and it is ${losses}`;
   if (node.utilization >= 0.95) return `it is at capacity and ${losses}`;
   return `it is ${losses}`;
@@ -457,8 +523,8 @@ function legendFor(model: ModelSnapshot, nodes: NodeFrame[], window: number): Le
       term: "Red",
       meaning:
         `Losing work. In the last ${window} s it turned requests away, or finished work its caller had already ` +
-        "given up on. The red box marked FIRST TO FOLD is the cause; boxes marked carrying are red because they " +
-        "are waiting on it.",
+        "given up on. The box marked CAUSE is why; boxes marked knock-on are red because they are waiting on it. " +
+        "The cause can be amber: at capacity, it loses nothing itself, and what waits on it does.",
     },
     {
       swatch: "strain",

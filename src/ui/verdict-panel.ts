@@ -24,7 +24,8 @@
  * seconds, and making someone click twice for that would be ceremony.
  */
 import { studyReadoutFor, type ArmLine, type StudyReadout } from "../verdict/readout.ts";
-import type { Probe, SweepTarget } from "../verdict/sweep.ts";
+import { SWEEP_BUDGET, type Probe, type SweepTarget } from "../verdict/sweep.ts";
+import { DETECTOR } from "../verdict/instability.ts";
 import { runStudy, NO_COMPARISON, type ComparisonSpec, type Study } from "../verdict/study.ts";
 import { createComputeClient, type ComputeClient } from "../worker/client.ts";
 import type { ComputeResponse } from "../worker/protocol.ts";
@@ -60,6 +61,21 @@ function rate(value: number): string {
 }
 
 /**
+ * The share of the probe's requests that never completed, shown on every row.
+ *
+ * "Folded" is a threshold (`DETECTOR`), and a reader whose bar is stricter or
+ * looser than ours should be able to read their own answer off the table rather
+ * than take the verdict word on trust. Not a setting: the threshold is the
+ * detector's measured noise floor, and moving it would make the bracket mean
+ * whatever number the room typed in.
+ */
+function lost(deficit: number): string {
+  const percent = deficit * 100;
+  if (percent === 0) return "0%";
+  return percent < 1 ? `${percent.toFixed(1)}%` : `${Math.round(percent)}%`;
+}
+
+/**
  * One probe as a row — and the confirmation probe said to *be* one.
  *
  * Without the label the table reads as the search contradicting itself: the same
@@ -74,7 +90,7 @@ function probeRow(probe: Probe, confirmation: boolean): HTMLElement {
   if (confirmation) row.dataset["confirmation"] = "true";
 
   const reason = confirmation ? `on a second arrival stream — ${probe.verdict.reason}` : probe.verdict.reason;
-  const cells = [`${rate(probe.rate)}/s`, probe.verdict.holds ? "held" : "folded", reason];
+  const cells = [`${rate(probe.rate)}/s`, probe.verdict.holds ? "held" : "folded", lost(probe.verdict.signals.deficit), reason];
   for (const [index, text] of cells.entries()) {
     row.append(element("td", index === 0 ? "wtr-cell-label" : undefined, text));
   }
@@ -108,7 +124,10 @@ export function createVerdictPanel(
     "wtr-verdict-blurb",
     "The model is run headless at one steady rate after another until the rate it stops holding is " +
       "bracketed. Nothing on screen is touched, and the search is not the load you drew — each probe " +
-      "holds one rate flat, which is what a claim like 'holds to 26/s' has to mean to be worth saying." +
+      "holds one rate flat, which is what a claim like 'holds to 26/s' has to mean to be worth saying. " +
+      `A rate folds when more than ${DETECTOR.deficit * 100}% of its requests are lost, or work piles up by more ` +
+      `than ${DETECTOR.growth * 100}% of the rate every second, over ${SWEEP_BUDGET.measureSeconds} s. ` +
+      "The Lost column shows the share at every rate tried." +
       (comparing ? " Every arm runs on the same arrival stream, so what differs is what was changed." : ""),
   );
 
@@ -149,7 +168,7 @@ export function createVerdictPanel(
     const table = element("table", "wtr-verdict-table");
     const head = element("thead");
     const headRow = element("tr");
-    for (const heading of ["Rate", "Verdict", "What happened"]) headRow.append(element("th", undefined, heading));
+    for (const heading of ["Rate", "Verdict", "Lost", "What happened"]) headRow.append(element("th", undefined, heading));
     head.append(headRow);
     const body = element("tbody");
     table.append(head, body);
@@ -198,7 +217,9 @@ export function createVerdictPanel(
   const showLine = (armLine: ArmLine): void => {
     const section = sectionFor(armLine.label);
     section.root.dataset["result"] = armLine.kind;
-    section.line.textContent = armLine.text;
+    // With one arm its line *is* the headline, and printing it under itself read
+    // as the panel stuttering. The line is for telling arms apart.
+    section.line.textContent = comparing ? armLine.text : "";
     section.culprit.textContent = armLine.culprit ?? "";
   };
 

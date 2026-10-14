@@ -96,6 +96,26 @@ describe("when the sweep lands", () => {
     panel.destroy();
   });
 
+  it("shows the share lost at every rate, so a stricter bar can be read off the table", async () => {
+    const panel = createVerdictPanel(target(40));
+    await settle(panel);
+
+    const cells = [...panel.element.querySelectorAll("tbody tr")].map((row) => row.children[2]?.textContent ?? "");
+    expect(cells.length).toBeGreaterThan(2);
+    expect(cells.every((cell) => /^\d+(\.\d)?%$/.test(cell))).toBe(true);
+    expect(panel.element.textContent).toContain("more than 2% of its requests are lost");
+    panel.destroy();
+  });
+
+  it("says the answer once", async () => {
+    const panel = createVerdictPanel(target(40));
+    await settle(panel);
+
+    const answer = headlineOf(panel);
+    expect(panel.element.textContent?.split(answer).length).toBe(2);
+    panel.destroy();
+  });
+
   it("marks the one probe that did not use the design's own arrival stream", async () => {
     const panel = createVerdictPanel(target(40));
     await settle(panel);

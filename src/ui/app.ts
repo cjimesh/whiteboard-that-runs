@@ -89,17 +89,13 @@ export function mountApp(root: HTMLElement): AppHandle {
     const sim = createModelSimulation(timeline);
     const surface = createRunSurface(sim, controls, {
       onEdit: () => showEditor(),
-      // Only a run started from the editor can keep its changes. The opening demo
-      // runs a hand-written timeline whose names are not the editable model's
-      // (`api-1` there, `service-1` here), so what it kept would quietly miss.
-      ...(document === undefined
-        ? {}
-        : {
-            onKeep: (changes: RunChanges) => {
-              beforeKeep ??= editing;
-              editing = keepRunChanges(editing, changes);
-            },
-          }),
+      // Every run is of the model being edited, the opening demo included: its
+      // hand-written timeline uses the same names as `demoDocument`, so what it
+      // keeps lands on the components it was steering.
+      onKeep: (changes: RunChanges) => {
+        beforeKeep ??= editing;
+        editing = keepRunChanges(editing, changes);
+      },
       comparison,
       ...(guidance === undefined ? {} : { guidance }),
       // What the author called things, and which numbers are still guesses — said

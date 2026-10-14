@@ -54,20 +54,20 @@ async function main(): Promise<void> {
   // A cache in front of the datastore: the proposal somebody actually brings.
   const withCache = addComponent(demoDocument(), { kind: "cache" }).document;
   await page.locator('[data-action="add:cache"]').click();
-  await clickComponent(page, toTimeline(withCache).model, "balancer-1");
+  await clickComponent(page, toTimeline(withCache).model, "gateway");
   await page.locator('[data-action="connect"]').click();
   await clickComponent(page, toTimeline(withCache).model, "cache-1");
 
-  const fedByBalancer = connect(withCache, "balancer-1", "cache-1");
+  const fedByBalancer = connect(withCache, "gateway", "cache-1");
   await clickComponent(page, toTimeline(fedByBalancer).model, "cache-1");
   await page.locator('[data-action="connect"]').click();
-  await clickComponent(page, toTimeline(fedByBalancer).model, "datastore-1");
+  await clickComponent(page, toTimeline(fedByBalancer).model, "orders-db");
 
   await clickComponent(page, toTimeline(fedByBalancer).model, "cache-1");
   await page.locator('[data-action="proposal"]').click();
 
   // And the number the room does not agree on.
-  await clickComponent(page, toTimeline(fedByBalancer).model, "datastore-1");
+  await clickComponent(page, toTimeline(fedByBalancer).model, "orders-db");
   await page.locator('[data-action="dispute:service-time"]').click();
   await page.locator('.wtr-inspector').screenshot({ path: resolve(docsDir, "compare-1-marked.png") });
   console.log("docs/compare-1-marked.png");

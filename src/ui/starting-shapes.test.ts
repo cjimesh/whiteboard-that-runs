@@ -9,7 +9,8 @@
  */
 import { describe, expect, it } from "vitest";
 import { STARTING_SHAPES } from "./starting-shapes.ts";
-import { toTimeline, validateDocument } from "../model/document.ts";
+import { setSpec, toTimeline, validateDocument } from "../model/document.ts";
+import { sweep } from "../verdict/sweep.ts";
 import { createModelSimulation } from "../specs/registry.ts";
 import { ARCHETYPES } from "../model/archetypes.ts";
 import { presets } from "../specs/registry.ts";
@@ -29,6 +30,19 @@ describe("starting shapes", () => {
       expect(completed / offered).toBeGreaterThan(0.97);
     });
   }
+
+  // From outside feedback: none of the shapes has a timeout, so a slow component
+  // behind a waiting app server never loses work itself — the app server's queue
+  // is the one that fills. Breaking point used to name the app server.
+  it("names the component that is the limit, not the app server waiting on it", () => {
+    let doc = (STARTING_SHAPES.find((shape) => shape.id === "web-database") as (typeof STARTING_SHAPES)[number]).build();
+    const db = doc.components.find((component) => component.id === "db-1");
+    doc = setSpec(doc, "db-1", { ...db?.spec, service: { policy: "exponential", mean: 0.05 } });
+    expect(sweep({ model: toTimeline(doc).model, seed: "shapes", baseRate: 100 }).firstToFold).toBe("db-1");
+
+    const queue = (STARTING_SHAPES.find((shape) => shape.id === "queue") as (typeof STARTING_SHAPES)[number]).build();
+    expect(sweep({ model: toTimeline(queue).model, seed: "shapes", baseRate: 50 }).firstToFold).toBe("queue-1");
+  }, 120_000);
 
   it("offers a blank canvas too", () => {
     expect(STARTING_SHAPES.find((shape) => shape.id === "blank")?.build().components).toEqual([]);

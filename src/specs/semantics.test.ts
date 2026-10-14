@@ -442,6 +442,42 @@ describe("cache hit ratio governs what reaches the origin", () => {
 
 // ------------------------------------------------------------------- balancer
 
+describe("a retry budget", () => {
+  it("caps a service's retries at its share of requests, whatever each failure is allowed", () => {
+    // The spiral's parameters, held at 44/s, with three retries each but a budget
+    // of one retry per ten requests. Three retries alone multiply the load; the
+    // budget holds the total to a tenth more.
+    const retry: RetrySpec = { policy: "exponential", attempts: 3, delay: 0.05, factor: 2, maxDelay: 5, budget: 0.1 };
+    const series = between(
+      run({
+        nodes: [node("api", "service", apiSpec(retry)), node("db", "datastore", SPIRAL_DB)],
+        edges: [{ from: "api", to: "db" }],
+        load: [{ rate: 44, duration: 120 }],
+        until: 120,
+        seed: "budget",
+      }),
+      20,
+      120,
+    );
+
+    const firstTries = sumSystem(series, "arrivals");
+    expect(sumNode(series, "api", "retries")).toBeGreaterThan(0);
+    expect(sumNode(series, "api", "retries") / firstTries).toBeLessThanOrEqual(0.1 + 10 / firstTries);
+  });
+
+  it("changes nothing when it is not set", () => {
+    const base = { policy: "exponential", attempts: 3, delay: 0.05, factor: 2, maxDelay: 5 } as const;
+    const options = (retry: RetrySpec) => ({
+      nodes: [node("api", "service", apiSpec(retry)), node("db", "datastore", SPIRAL_DB)],
+      edges: [{ from: "api", to: "db" }],
+      load: [{ rate: 44, duration: 30 }],
+      until: 30,
+      seed: "budget",
+    });
+    expect(run(options({ ...base, budget: 0 }))).toEqual(run(options(base)));
+  });
+});
+
 describe("balancer strategy", () => {
   const threeWay = (policy: "round-robin" | "random" | "least-queue", slowTail = false): number[] => {
     const replica = (id: string, mean: number): NodeSnapshot =>

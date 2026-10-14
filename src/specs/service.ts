@@ -10,7 +10,7 @@
  */
 import type { Job, NodeBehavior, NodeContext } from "../engine/kernel.ts";
 import { createServerBehavior, passOn, type SpecReader } from "./server-core.ts";
-import { backoff, maxAttempts } from "./retry.ts";
+import { backoff, createRetryBudget, earnRetry, maxAttempts, spendRetry, type RetryBudget } from "./retry.ts";
 
 function callWithRetries(
   job: Job,
@@ -18,6 +18,7 @@ function callWithRetries(
   read: SpecReader,
   target: string,
   release: () => void,
+  budget: RetryBudget,
 ): void {
   const giveUpOrRetry = (attempt: number): void => {
     // Re-read here, not at entry: the whole point of a live mid-run policy change
@@ -26,6 +27,11 @@ function callWithRetries(
     if (attempt + 1 >= maxAttempts(spec.retry)) {
       release();
       ctx.drop(job, "downstream did not answer");
+      return;
+    }
+    if (!spendRetry(budget, spec.retry)) {
+      release();
+      ctx.drop(job, "downstream did not answer, and the retry budget was spent");
       return;
     }
     ctx.recordRetry();
@@ -65,10 +71,13 @@ function callWithRetries(
     }
   };
 
+  earnRetry(budget, read().retry);
   attemptCall(0);
 }
 
 export function createService(): NodeBehavior {
+  // One per service, because a service has one successor to call.
+  const budget = createRetryBudget();
   return createServerBehavior("service", (job, ctx, read, release) => {
     const target = ctx.downstream()[0];
     if (target === undefined) {
@@ -81,6 +90,6 @@ export function createService(): NodeBehavior {
       return;
     }
 
-    callWithRetries(job, ctx, read, target, release);
+    callWithRetries(job, ctx, read, target, release, budget);
   });
 }

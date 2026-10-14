@@ -17,7 +17,7 @@
  */
 import type { PartialComponentSpec } from "../specs/format.ts";
 import type { RunControls } from "./controls.ts";
-import { addComponent, connect, emptyDocument, setLoad, type WhiteboardDocument } from "../model/document.ts";
+import { addComponent, connect, emptyDocument, renameComponent, setLoad, type WhiteboardDocument } from "../model/document.ts";
 import type { Timeline } from "../engine/timeline.ts";
 
 /**
@@ -57,6 +57,7 @@ function dbSpec(): PartialComponentSpec {
 export const RETRY_PRESETS = {
   backoff: { policy: "exponential", attempts: 3, delay: 0.05, factor: 2, maxDelay: 5 },
   capped: { policy: "capped", attempts: 1, delay: 0.2, factor: 2, maxDelay: 0.5 },
+  budgeted: { policy: "exponential", attempts: 3, delay: 0.05, factor: 2, maxDelay: 5, budget: 0.1 },
   none: { policy: "none", attempts: 0, delay: 0.05, factor: 2, maxDelay: 1 },
 } as const satisfies Record<string, NonNullable<PartialComponentSpec["retry"]>>;
 
@@ -221,6 +222,18 @@ export function demoControls(): RunControls {
             spec: { retry: RETRY_PRESETS.capped },
           },
           {
+            // Measured over five minutes on five seeds after a collapse at 44/s:
+            // 21–29/s with a 10% budget, against 33–37/s with no retries and zero
+            // with none. It bounds the damage rather than undoing it, because at a
+            // 250 ms timeout every retry here is work for a database already behind.
+            value: "budgeted",
+            label: "Backoff ×3, 10% budget",
+            note:
+              "Retries capped at a tenth of requests. Throughput comes back, but stalls now and then and stays " +
+              "below No retries: here, any retry is extra work for a database that is already behind.",
+            spec: { retry: RETRY_PRESETS.budgeted },
+          },
+          {
             value: "none",
             label: "No retries",
             note: "Offered load only. The backlog drains and throughput comes back.",
@@ -305,12 +318,19 @@ export function demoDocument(): WhiteboardDocument {
   doc = addComponent(doc, { kind: "balancer", preset: "balancer/round-robin", spec: { balancer: { policy: "round-robin" } } }).document;
   doc = addComponent(doc, { kind: "service", spec: apiSpec(RETRY_PRESETS.backoff) }).document;
   doc = addComponent(doc, { kind: "service", spec: apiSpec(RETRY_PRESETS.backoff) }).document;
-  doc = addComponent(doc, { kind: "datastore", spec: { concurrency: 1, service: { policy: "exponential", mean: 0.02 }, queue: { policy: "fifo", capacity: 30 } } }).document;
+  doc = addComponent(doc, { kind: "datastore", spec: dbSpec() }).document;
 
-  doc = connect(doc, "balancer-1", "service-1");
-  doc = connect(doc, "balancer-1", "service-2");
-  doc = connect(doc, "service-1", "datastore-1");
-  doc = connect(doc, "service-2", "datastore-1");
+  // The names the tour and the opening run use. Generated names here once made
+  // the same demo `api-1` on one screen and `service-1` on the next.
+  doc = renameComponent(doc, "balancer-1", "gateway");
+  doc = renameComponent(doc, "service-1", "api-1");
+  doc = renameComponent(doc, "service-2", "api-2");
+  doc = renameComponent(doc, "datastore-1", "orders-db");
+
+  doc = connect(doc, "gateway", "api-1");
+  doc = connect(doc, "gateway", "api-2");
+  doc = connect(doc, "api-1", "orders-db");
+  doc = connect(doc, "api-2", "orders-db");
 
   return setLoad(doc, [{ rate: DEMO_BASE_RATE, duration: 3600 }]);
 }

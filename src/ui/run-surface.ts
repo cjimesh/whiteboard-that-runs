@@ -26,9 +26,12 @@ import { capacityOf, describeCapacity, parseCapacity, withCapacity } from "../sp
 import { describeTimeout, parseTimeout, timeoutOf, withTimeout } from "../specs/timeout.ts";
 import {
   describeCallPolicy,
+  formatRetryBudget,
   parseRetries,
+  parseRetryBudget,
   resolveCallPolicy,
   withCallRetries,
+  withCallRetryBudget,
   withCallTimeout,
   type PartialCallPolicy,
 } from "../specs/call-policy.ts";
@@ -205,6 +208,10 @@ export function createRunSurface(
   const offered = readout("offered");
   const goodput = readout("completing");
   const dropped = readout("lost");
+  // The share sits beside the rate rather than inside it, so the value stays the
+  // number it always was for anything that reads it.
+  const droppedShare = element("span", "wtr-readout-share");
+  dropped.value.after(droppedShare);
   const latency = readout("p95 latency");
   const inFlight = readout("in flight");
 
@@ -730,6 +737,19 @@ export function createRunSurface(
       else apply(withCallRetries(current(), parsed.attempts), `retries → ${parsed.attempts === null ? "off" : parsed.attempts}`);
     });
 
+    // The fix a room proposes first for a storm, so it is live here too.
+    const budget = element("input", "wtr-number wtr-number-small");
+    budget.type = "text";
+    budget.inputMode = "decimal";
+    budget.dataset["action"] = `call-budget:${control.from}:${control.to}`;
+    budget.setAttribute("aria-label", `${control.label} retry budget, % of requests`);
+    budget.value = formatRetryBudget(resolved.retry);
+    budget.addEventListener("change", () => {
+      const parsed = parseRetryBudget(budget.value);
+      if (!parsed.ok) error.textContent = parsed.error;
+      else apply(withCallRetryBudget(current(), parsed.share), `retry budget → ${parsed.share === null ? "off" : `${Number((parsed.share * 100).toFixed(2))}%`}`);
+    });
+
     // The name on its own line: a call is named by both its ends, which is
     // already most of the column before either field is drawn.
     const fields = element("div", "wtr-call-fields");
@@ -738,6 +758,8 @@ export function createRunSurface(
       element("span", "wtr-field-unit", "ms timeout"),
       retries,
       element("span", "wtr-field-unit", "retries"),
+      budget,
+      element("span", "wtr-field-unit", "% budget"),
     );
 
     const group = element("div", "wtr-preset-group");
@@ -806,7 +828,7 @@ export function createRunSurface(
   const steerHint = element(
     "p",
     "wtr-preset-note",
-    "Click a box on the canvas to steer it. The one that folds first opens on its own.",
+    "Click a box on the canvas to steer it. The cause of any lost work opens on its own.",
   );
   const controlColumn = element("aside", "wtr-controls");
   controlColumn.append(guidanceCard, presetRow, steerHint, paramRow, legendList);
@@ -915,6 +937,8 @@ export function createRunSurface(
 
   const rate = (value: number): string =>
     value >= 100 ? `${Math.round(value)}` : value >= 10 ? value.toFixed(1) : value.toFixed(2);
+  const lostShare = (fraction: number): string =>
+    fraction < 0.01 ? `${(fraction * 100).toFixed(1)}%` : `${Math.round(Math.min(1, fraction) * 100)}%`;
 
   const draw = (): void => {
     const frame = frameFor({ model: sim.recorded().model, snapshot: sim.snapshot(), series: sim.series() });
@@ -944,7 +968,13 @@ export function createRunSurface(
 
     offered.value.textContent = `${rate(frame.system.offered)}/s`;
     goodput.value.textContent = `${rate(frame.system.goodput)}/s`;
+    // As a share too: "3/s lost" is a rounding error at 300/s and half the load
+    // at 6/s, and the canvas's red cannot tell those apart.
     dropped.value.textContent = `${rate(frame.system.dropRate)}/s`;
+    droppedShare.textContent =
+      frame.system.dropRate > 0 && frame.system.offered > 0
+        ? `${lostShare(frame.system.dropRate / frame.system.offered)} of offered`
+        : "";
     latency.value.textContent =
       frame.system.latencyP95 > 0 ? `${Math.round(frame.system.latencyP95 * 1000)} ms` : "—";
     inFlight.value.textContent = String(frame.system.inFlight);
@@ -958,7 +988,7 @@ export function createRunSurface(
       const { id, reason, carrying } = frame.culprit;
       culpritLine.dataset["culprit"] = id;
       culpritLine.textContent =
-        `${id} folded first — ${reason}.` +
+        `${id} is the cause — ${reason}.` +
         (carrying.length === 0
           ? ""
           : ` ${carrying.join(", ")} ${carrying.length === 1 ? "is" : "are"} red because of it, not with it.`);
@@ -1182,17 +1212,51 @@ export function createRunSurface(
     button.addEventListener("click", () => rerunOn(arm));
   }
 
+  /**
+   * Give an open answer the page, not the leftovers.
+   *
+   * Locked to the window, the surface handed Breaking point and Validation
+   * whatever was left under a canvas with a 340px floor — a strip on a laptop,
+   * for the one thing the room asked for. So while either is open the surface
+   * stops being locked and the page grows downwards. Everything above the panel
+   * keeps the size it had, pinned in pixels and measured *before* the panel goes
+   * in: a picture that jumped the moment a panel opened would look like the model
+   * had changed, and an unpinned control column (tour, legend) would stretch the
+   * rows beside it to its own full height. Closed again, the lock comes back: a
+   * driver mid-demo still never has to scroll for the load slider.
+   */
+  const pinForAnswer = (): void => {
+    if (root.dataset["answer"] === "open") return;
+    root.style.setProperty("--wtr-stage-height", `${Math.max(340, stage.getBoundingClientRect().height)}px`);
+    root.style.setProperty("--wtr-controls-height", `${controlColumn.getBoundingClientRect().height}px`);
+    root.dataset["answer"] = "open";
+  };
+
+  const syncPanelLayout = (opened?: HTMLElement): void => {
+    if (panel === null && verdict === null) {
+      delete root.dataset["answer"];
+      root.style.removeProperty("--wtr-stage-height");
+      root.style.removeProperty("--wtr-controls-height");
+    }
+    player?.repaint();
+    // Not in every environment (jsdom has none), and nothing depends on it.
+    opened?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+  };
+
   validate.addEventListener("click", () => {
     if (panel !== null) {
       panel.destroy();
       panel.element.remove();
       panel = null;
-      validate.textContent = "Validation";
+      validate.textContent = "Why trust this?";
+      syncPanelLayout();
       return;
     }
+    pinForAnswer();
     panel = createValidationPanel();
     panelHost.append(panel.element);
     validate.textContent = "Hide validation";
+    syncPanelLayout(panel.element);
   });
 
   /**
@@ -1228,6 +1292,7 @@ export function createRunSurface(
     verdict?.element.remove();
     verdict = null;
     breakingPoint.textContent = "Breaking point";
+    syncPanelLayout();
   };
 
   breakingPoint.addEventListener("click", () => {
@@ -1235,9 +1300,11 @@ export function createRunSurface(
       closeVerdict();
       return;
     }
+    pinForAnswer();
     verdict = createVerdictPanel(sweepTarget(), comparison);
     panelHost.append(verdict.element);
     breakingPoint.textContent = "Hide breaking point";
+    syncPanelLayout(verdict.element);
   });
 
   const onResize = (): void => player?.repaint();

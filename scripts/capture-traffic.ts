@@ -45,15 +45,15 @@ async function main(): Promise<void> {
   const box = await page.locator("canvas").boundingBox();
   if (box === null) throw new Error("no canvas");
   const { scale, offsetX, offsetY } = computeViewport(box.width, box.height, LAYOUT_BOX);
-  const place = layoutModel(toTimeline(demoDocument()).model, LAYOUT_BOX).nodes["datastore-1"];
-  if (place === undefined) throw new Error("no datastore-1 in the layout");
+  const place = layoutModel(toTimeline(demoDocument()).model, LAYOUT_BOX).nodes["orders-db"];
+  if (place === undefined) throw new Error("no orders-db in the layout");
   await page.mouse.click(
     box.x + offsetX + (place.x + place.w / 2) * scale,
     box.y + offsetY + (place.y + place.h / 2) * scale,
   );
 
-  await page.locator('[data-action="add-traffic:datastore-1"]').click();
-  const rate = page.locator('[data-traffic-rate="traffic-datastore-1"]');
+  await page.locator('[data-action="add-traffic:orders-db"]').click();
+  const rate = page.locator('[data-traffic-rate="traffic-orders-db"]');
   await rate.fill("18");
   await rate.dispatchEvent("change");
 

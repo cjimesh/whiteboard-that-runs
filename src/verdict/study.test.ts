@@ -106,6 +106,42 @@ describe("deriving the baseline", () => {
     expect(wires(baselineOf(withChain, ["queue", "cache"]))).toEqual(wires(fleet()));
   });
 
+  it("keeps the other traffic on components the baseline still has", () => {
+    // A cache inserted in front of a datastore that other services also use. The
+    // datastore's other traffic is there with or without the cache, so a baseline
+    // without it would be a quieter system than the one anybody drew.
+    const withCache: ModelSnapshot = {
+      entryId: "lb",
+      nodes: [...fleet().nodes, { id: "cache", kind: "cache", spec: { cache: { policy: "fixed-ratio", hitRatio: 0.5 } } }],
+      edges: [
+        { from: "lb", to: "api-1" },
+        { from: "lb", to: "api-2" },
+        { from: "api-1", to: "cache" },
+        { from: "api-2", to: "cache" },
+        { from: "cache", to: "db" },
+      ],
+      sources: [{ id: "reports", name: "the reporting jobs", nodeId: "db", rate: 20 }],
+    };
+
+    expect(baselineOf(withCache, ["cache"]).sources).toEqual(withCache.sources);
+  });
+
+  it("drops the other traffic on a component the proposal adds", () => {
+    // A proposed shared session store that other services would use too. Without
+    // it there is nothing for that traffic to land on.
+    const withStore: ModelSnapshot = {
+      ...fleet(),
+      nodes: [...fleet().nodes, { id: "sessions", kind: "datastore", spec: store(500) }],
+      edges: [...fleet().edges, { from: "api-1", to: "sessions", kind: "call", times: 1 }],
+      sources: [
+        { id: "reports", name: "the reporting jobs", nodeId: "db", rate: 20 },
+        { id: "other-apps", name: "other apps' sessions", nodeId: "sessions", rate: 5 },
+      ],
+    };
+
+    expect(baselineOf(withStore, ["sessions"]).sources?.map((source) => source.id)).toEqual(["reports"]);
+  });
+
   it("leaves a model alone when nothing is marked", () => {
     expect(baselineOf(fleet(), [])).toEqual(fleet());
   });

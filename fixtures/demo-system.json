@@ -5,7 +5,7 @@
     "name": "Orders (demo)",
     "components": [
       {
-        "id": "balancer-1",
+        "id": "gateway",
         "kind": "balancer",
         "preset": "balancer/round-robin",
         "spec": {
@@ -15,7 +15,7 @@
         }
       },
       {
-        "id": "service-1",
+        "id": "api-1",
         "kind": "service",
         "preset": null,
         "spec": {
@@ -42,7 +42,7 @@
         }
       },
       {
-        "id": "service-2",
+        "id": "api-2",
         "kind": "service",
         "preset": null,
         "spec": {
@@ -69,7 +69,7 @@
         }
       },
       {
-        "id": "datastore-1",
+        "id": "orders-db",
         "kind": "datastore",
         "preset": null,
         "spec": {
@@ -87,23 +87,23 @@
     ],
     "edges": [
       {
-        "from": "balancer-1",
-        "to": "service-1"
+        "from": "gateway",
+        "to": "api-1"
       },
       {
-        "from": "balancer-1",
-        "to": "service-2"
+        "from": "gateway",
+        "to": "api-2"
       },
       {
-        "from": "service-1",
-        "to": "datastore-1"
+        "from": "api-1",
+        "to": "orders-db"
       },
       {
-        "from": "service-2",
-        "to": "datastore-1"
+        "from": "api-2",
+        "to": "orders-db"
       }
     ],
-    "entryId": "balancer-1",
+    "entryId": "gateway",
     "load": [
       {
         "rate": 22,
@@ -113,6 +113,7 @@
     "seed": "model-v1",
     "bucketWidth": 0.25,
     "delta": [],
-    "disputed": null
+    "disputed": null,
+    "sources": []
   }
 }

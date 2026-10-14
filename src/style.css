@@ -194,6 +194,15 @@ body {
   line-height: 1.1;
 }
 
+.wtr-readout-share {
+  font-size: 0.78rem;
+  color: var(--fold);
+}
+
+.wtr-readout-share:empty {
+  display: none;
+}
+
 .wtr-readout-label {
   font-size: 0.72rem;
   letter-spacing: 0.06em;
@@ -771,6 +780,24 @@ body {
   overflow-y: auto;
 }
 
+/* An answer open: the page grows instead (see `syncPanelLayout`). The canvas row
+   is pinned at the height it had, and the panel takes as much as it needs. */
+.wtr-run-surface[data-answer="open"] {
+  height: auto;
+  min-height: 100vh;
+  overflow: visible;
+  grid-template-rows: auto auto var(--wtr-stage-height, 340px) auto auto auto;
+}
+
+.wtr-run-surface[data-answer="open"] .wtr-controls {
+  height: var(--wtr-controls-height, auto);
+}
+
+.wtr-run-surface[data-answer="open"] .wtr-panel-host:not(:empty) {
+  max-height: none;
+  overflow: visible;
+}
+
 .wtr-preset-note {
   font-size: 0.76rem;
 }
@@ -1323,6 +1350,10 @@ body {
 
 .wtr-run-surface[data-mode="present"] .wtr-controls {
   display: none;
+}
+
+.wtr-run-surface[data-mode="present"][data-answer="open"] {
+  grid-template-rows: auto auto var(--wtr-stage-height, 340px) auto auto auto;
 }
 
 .wtr-run-surface[data-mode="present"] .wtr-readout-value {

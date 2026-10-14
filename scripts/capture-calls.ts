@@ -55,10 +55,10 @@ async function main(): Promise<void> {
   // asks along the way — the editor's default, and what is wanted here.
   let doc = addComponent(demoDocument(), { kind: "datastore", idBase: "store" }).document;
   await page.locator('[data-action="add:memory-store"]').click();
-  await clickComponent(page, doc, "service-1");
+  await clickComponent(page, doc, "api-1");
   await page.locator('[data-action="connect"]').click();
   await clickComponent(page, doc, "store-1");
-  doc = connect(doc, "service-1", "store-1", "call");
+  doc = connect(doc, "api-1", "store-1", "call");
 
   const timeout = page.locator('[data-arrow-timeout="store-1"]');
   await timeout.fill("10");
@@ -73,10 +73,10 @@ async function main(): Promise<void> {
   await page.locator('[data-action="run"]').click();
   await page.locator('[data-surface="run"]').waitFor();
   await page.selectOption('[data-action="speed"]', "4");
-  await clickComponent(page, doc, "service-1");
+  await clickComponent(page, doc, "api-1");
   await page.waitForTimeout(3_000);
 
-  const knob = page.locator('[data-steer="service-1"]');
+  const knob = page.locator('[data-steer="api-1"]');
   await knob.scrollIntoViewIfNeeded();
   await knob.screenshot({ path: resolve(docsDir, "calls-2-knob.png") });
   console.log("docs/calls-2-knob.png");

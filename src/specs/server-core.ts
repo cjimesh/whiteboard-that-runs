@@ -19,7 +19,7 @@
 import type { Job, NodeBehavior, NodeContext } from "../engine/kernel.ts";
 import { resolveSpecStrict, type ComponentKind, type ComponentSpec } from "./format.ts";
 import { resolveCallPolicyStrict, type CallPolicy } from "./call-policy.ts";
-import { backoff, maxAttempts } from "./retry.ts";
+import { backoff, createRetryBudget, earnRetry, maxAttempts, spendRetry, type RetryBudget } from "./retry.ts";
 
 /** Reads the node's spec, resolved against defaults and cached until it changes. */
 export type SpecReader = () => ComponentSpec;
@@ -97,8 +97,17 @@ function askDependencies(
   ctx: NodeContext,
   onDone: () => void,
   onFail: (target: string) => void,
+  budgets: Map<string, RetryBudget>,
 ): void {
   const deps = ctx.dependencies();
+  const budgetFor = (target: string): RetryBudget => {
+    let budget = budgets.get(target);
+    if (budget === undefined) {
+      budget = createRetryBudget();
+      budgets.set(target, budget);
+    }
+    return budget;
+  };
   if (deps.length === 0) {
     onDone();
     return;
@@ -117,6 +126,7 @@ function askDependencies(
     }
     const target = calls[index] as string;
     index += 1;
+    earnRetry(budgetFor(target), policyOf(ctx, target).retry);
     attempt(target, 0);
   };
 
@@ -124,7 +134,7 @@ function askDependencies(
     // Re-read here, not when the call began: a live change to the policy
     // reaches a request that is already between attempts.
     const { retry } = policyOf(ctx, target);
-    if (tried + 1 >= maxAttempts(retry)) {
+    if (tried + 1 >= maxAttempts(retry) || !spendRetry(budgetFor(target), retry)) {
       onFail(target);
       return;
     }
@@ -241,6 +251,9 @@ export function createServerBehavior(kind: ComponentKind, served: ServedHandler)
   const waiting: Job[] = [];
   let busy = 0;
   let cached: ComponentSpec | null = null;
+  // One retry budget per dependency: a budget on the call to Redis says nothing
+  // about the call to the database.
+  const budgets = new Map<string, RetryBudget>();
 
   // Resolving on every read would be correct but wasteful at sweep scale, so the
   // result is cached and thrown away whenever a mutation lands on this node.
@@ -289,6 +302,7 @@ export function createServerBehavior(kind: ComponentKind, served: ServedHandler)
             release();
             ctx.drop(job, `${target} did not answer`);
           },
+          budgets,
         );
 
       if (hold === null) {

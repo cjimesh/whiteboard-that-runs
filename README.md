@@ -152,7 +152,12 @@ each with a count of calls per request. Calls are drawn as dashed ribbons.
 **Timeouts and retries on a call.** Click a call and, under **If it is slow**, set a timeout and a
 number of retries. An attempt the caller gives up on is abandoned but not cancelled: it stays queued
 or in progress at the dependency while the retry joins the queue behind it. That duplicate work is
-what drives a retry storm. Calls with a policy get a live control on the run screen.
+what drives a retry storm. Once a call retries, two more fields appear: how long to wait before the
+first retry (later waits grow from it), and a **retry budget**, the share of requests that may be
+retried at all. Past the budget a failed call fails the request instead of asking again, with up to
+10 retries saved for a burst. The same fields are on a component's own arrow. Calls with a policy get
+a live control on the run screen, budget included, and the demo's **Retry policy** menu has a
+budgeted option.
 
 **Leases.** Some components keep their slot after answering. A connection or session pool is the
 usual case: a request claims a resource, gets a reply in seconds, and the resource stays allocated for
@@ -177,8 +182,11 @@ draining. The second red condition is how a very deep queue fails: nothing is tu
 caller times out before its answer arrives, so the work is done for nobody. Both red conditions count
 things that happened, so one late answer is enough: the demo's database turns red for a moment now
 and then even at its resting load, when a rare slow call outlasts the timeout. When several boxes
-are red, the one with no red box after it in the chain is tagged **first to fold**, and the rest are
-marked **carrying**, because a caller that waits on a stuck dependency turns red with it. The amber
+are red, one box is tagged **cause** and the red boxes waiting on it are marked **knock-on**, because a
+caller that waits on a stuck dependency turns red with it. The cause is usually the red box with no red
+box after it in the chain. It can also be an amber box that a red box is waiting on, if it is busy at
+least 95% of the time: a caller with no timeout can only have so many calls open, so the component it
+waits on never turns anything away, and the loss shows up at the caller instead. The amber
 thresholds are judgement calls, not measurements. A box with no timeout anywhere in front of it can
 fall further and further behind without losing anything, so it stays amber; **Breaking point** looks
 for work that keeps piling up, so it catches that case.
@@ -198,7 +206,9 @@ queue checked against the unbounded formula.
 
 **Breaking point reports a range.** The sweep runs in a background worker at a series of steady rates
 until it has bracketed the rate at which the system stops holding, for example "Holds to ~26/s. Folds
-by 27.5/s." It stops at an 8% gap, the detector's measured resolution. It then re-runs the holding
+by 27.5/s." A rate **folds** when more than 2% of its requests are lost, or when work piles up by more
+than 1% of the rate every second, over 240 seconds; the table shows the share lost at every rate tried,
+so a stricter bar can be read straight off it. It stops at an 8% gap, the detector's measured resolution. It then re-runs the holding
 rate on a different arrival stream; if that run fails, the readout says the design has no clean
 threshold instead of quoting a number. It refuses a model it cannot sweep in a few seconds and shows
 the calculation behind the refusal.
@@ -233,9 +243,9 @@ You can verify this:
 - **Batching and parallel calls.** Dependencies are called one at a time, and nothing is batched.
 - **Proposals that only add an arrow.** A proposal has to add a component.
 
-Out of scope by design: circuit breakers and bulkheads, rate limiting, retry budgets and token
-buckets, scatter-gather with a join, cache TTL and key space, autoscaling, and network latency on a
-wire. Arrows take no time, so anything that costs time has to be drawn as a component.
+Out of scope by design: circuit breakers and bulkheads, rate limiting, scatter-gather with a join,
+cache TTL and key space, autoscaling, and network latency on a wire. Arrows take no time, so anything
+that costs time has to be drawn as a component.
 
 ## Building from source
 

@@ -175,7 +175,9 @@ function describe(signals: Signals, cause: FoldCause | null): string {
 
   switch (cause) {
     case "loss":
-      return `${served} — ${(signals.deficit * 100).toFixed(0)}% of the load never completed`;
+      // The share itself is in the probe table's own column; this says which
+      // rule it broke.
+      return `${served}, more than ${DETECTOR.deficit * 100}% lost`;
     case "growth":
       return `work in the system grew by ${signals.growth.toFixed(1)} requests every second, ${served}`;
     case "both":

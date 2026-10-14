@@ -80,6 +80,12 @@ export interface RetrySpec {
   factor: number;
   /** Ceiling on the wait, for `capped`. */
   maxDelay: number;
+  /**
+   * The share of requests that may be retried, 0 to 1; 0 means no budget, so
+   * every failure may use every attempt. See `retry.ts` for how it is spent.
+   * Optional so that every policy written before budgets existed still is one.
+   */
+  budget?: number;
 }
 
 /**
@@ -178,7 +184,7 @@ const BASE_DEFAULTS: ComponentSpec = {
   service: { policy: "exponential", mean: 0.04 },
   queue: { policy: "fifo", capacity: 100 },
   timeout: { policy: "none", after: 1 },
-  retry: { policy: "none", attempts: 2, delay: 0.1, factor: 2, maxDelay: 1 },
+  retry: { policy: "none", attempts: 2, delay: 0.1, factor: 2, maxDelay: 1, budget: 0 },
   hold: { policy: "none", mean: 60 },
   downstream: { policy: "call-and-wait" },
   balancer: { policy: "round-robin" },
@@ -390,6 +396,7 @@ export function validateSpec(kind: string, raw: unknown, options: ValidateOption
     checkNumber("retry", raw["retry"], "delay", (n) => n >= 0, "a non-negative number of seconds", errors);
     checkNumber("retry", raw["retry"], "factor", (n) => n >= 1, "at least 1", errors);
     checkNumber("retry", raw["retry"], "maxDelay", (n) => n >= 0, "a non-negative number of seconds", errors);
+    checkNumber("retry", raw["retry"], "budget", (n) => n >= 0 && n <= 1, "a share between 0 and 1", errors);
   }
 
   if (raw["hold"] !== undefined && checkPolicy("hold", raw["hold"], HOLD_POLICIES, errors)) {

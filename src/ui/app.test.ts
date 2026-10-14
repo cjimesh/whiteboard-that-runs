@@ -104,11 +104,11 @@ describe("running an authored model", () => {
     // The demo document has a datastore and two services, so the run surface
     // offers a capacity knob for each and a timeout for the services — derived
     // from the components, not declared anywhere.
-    expect(root.querySelector('[data-action="capacity:datastore-1"]')).toBeTruthy();
-    expect(root.querySelector('[data-action="capacity:service-1"]')).toBeTruthy();
-    expect(root.querySelector('[data-action="timeout:service-1"]')).toBeTruthy();
+    expect(root.querySelector('[data-action="capacity:orders-db"]')).toBeTruthy();
+    expect(root.querySelector('[data-action="capacity:api-1"]')).toBeTruthy();
+    expect(root.querySelector('[data-action="timeout:api-1"]')).toBeTruthy();
     // A balancer has no service time and no timeout, so it gets neither.
-    expect(root.querySelector('[data-action="capacity:balancer-1"]')).toBeNull();
+    expect(root.querySelector('[data-action="capacity:gateway"]')).toBeNull();
   });
 });
 
@@ -152,11 +152,17 @@ describe("keeping a run's changes", () => {
   };
   const keep = (): HTMLButtonElement | null => root.querySelector<HTMLButtonElement>('[data-action="keep"]');
   const capacity = (): string | undefined =>
-    root.querySelector<HTMLInputElement>('[data-action="capacity:datastore-1"]')?.value;
+    root.querySelector<HTMLInputElement>('[data-action="capacity:orders-db"]')?.value;
 
-  it("is not offered on the opening demo, whose names are not the model's", () => {
+  it("is offered on the opening demo, and lands on the components it steered", () => {
     app = mountApp(root);
-    expect(keep()).toBeNull();
+    expect(keep()?.disabled).toBe(true);
+    change('[data-action="capacity:orders-db"]', "80");
+    click('[data-action="keep"]');
+
+    click('[data-action="edit"]');
+    click('[data-action="run"]');
+    expect(capacity()).toBe("80");
   });
 
   it("is offered once something has changed", () => {
@@ -164,7 +170,7 @@ describe("keeping a run's changes", () => {
     click('[data-action="edit"]');
     click('[data-action="run"]');
     expect(keep()?.disabled).toBe(true);
-    change('[data-action="capacity:datastore-1"]', "80");
+    change('[data-action="capacity:orders-db"]', "80");
     expect(keep()?.disabled).toBe(false);
   });
 
@@ -172,7 +178,7 @@ describe("keeping a run's changes", () => {
     app = mountApp(root);
     click('[data-action="edit"]');
     click('[data-action="run"]');
-    change('[data-action="capacity:datastore-1"]', "80");
+    change('[data-action="capacity:orders-db"]', "80");
     click('[data-action="keep"]');
     expect(keep()?.textContent).toBe("Kept in the model");
     expect(app.unsaved()).toBe(true);
@@ -187,7 +193,7 @@ describe("keeping a run's changes", () => {
     click('[data-action="edit"]');
     click('[data-action="run"]');
     const before = capacity();
-    change('[data-action="capacity:datastore-1"]', "80");
+    change('[data-action="capacity:orders-db"]', "80");
     click('[data-action="keep"]');
 
     click('[data-action="edit"]');
@@ -202,7 +208,7 @@ describe("keeping a run's changes", () => {
     click('[data-action="edit"]');
     click('[data-action="run"]');
     const before = capacity();
-    change('[data-action="capacity:datastore-1"]', "80");
+    change('[data-action="capacity:orders-db"]', "80");
     click('[data-action="edit"]');
     click('[data-action="run"]');
     expect(capacity()).toBe(before);

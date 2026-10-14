@@ -138,7 +138,19 @@ export function baselineOf(model: ModelSnapshot, delta: readonly string[]): Mode
     }
   }
 
-  const baseline: ModelSnapshot = { entryId: model.entryId, nodes, edges: bridged };
+  // Spread from the model so nothing it carries besides the graph is lost on the
+  // way. Other traffic used to be: the baseline was rebuilt from the graph alone,
+  // so it ran without the load from outside the drawing and every proposal on a
+  // shared component was compared against a quieter system than the one drawn.
+  // Traffic landing on a proposal component goes with it — that component, and
+  // so whatever else used it, is not there in the baseline.
+  const sources = model.sources?.filter((source) => kept.has(source.nodeId));
+  const baseline: ModelSnapshot = {
+    ...model,
+    nodes,
+    edges: bridged,
+    ...(sources === undefined ? {} : { sources }),
+  };
 
   // Checked here rather than left to blow up inside the engine, because the
   // interesting part of the message is that it is the *baseline* that cannot be

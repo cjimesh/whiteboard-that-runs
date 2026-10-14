@@ -32,9 +32,20 @@
 import type { ComponentKind, PartialComponentSpec } from "../specs/format.ts";
 import { CONCERNS, resolveSpec } from "../specs/format.ts";
 import type { EdgeKind } from "../engine/timeline.ts";
-import { describeCallPolicy, parseRetries, resolveCallPolicy, withCallRetries, withCallTimeout } from "../specs/call-policy.ts";
+import {
+  describeCallPolicy,
+  formatRetryBudget,
+  parseRetries,
+  parseRetryBudget,
+  parseRetryDelay,
+  resolveCallPolicy,
+  withCallRetries,
+  withCallRetryBudget,
+  withCallRetryDelay,
+  withCallTimeout,
+} from "../specs/call-policy.ts";
 import { parseTimeout, withTimeout } from "../specs/timeout.ts";
-import { withRetryCount } from "../specs/retry.ts";
+import { withRetryBudget, withRetryCount, withRetryDelay } from "../specs/retry.ts";
 import { capacityOf } from "../specs/capacity.ts";
 import { presets } from "../specs/registry.ts";
 import { ARCHETYPES, addArchetype, archetypeOf } from "../model/archetypes.ts";
@@ -819,9 +830,63 @@ export function createEditorSurface(options: EditorOptions): EditorSurface {
       giveUp.append(element("span", "wtr-field-label", "Gives up after"), timeout, element("span", "wtr-field-unit", "ms"));
       const askAgain = element("label", "wtr-field");
       askAgain.append(element("span", "wtr-field-label", "Then asks again"), retries, element("span", "wtr-field-unit", "times"));
+      inspector.append(giveUp, askAgain);
+
+      // How it asks again, once it does. The first wait used to be a default
+      // nobody could see or change (100 ms), and a budget — the fix people reach
+      // for first in a retry storm — could not be stated at all.
+      if (policy.retry.policy !== "none" && policy.retry.attempts > 0) {
+        const setRetry = (next: (retry: typeof policy.retry) => typeof policy.retry, forCall: () => void): void => {
+          if (relation === "call") forCall();
+          else updateSpec(source, { ...source.spec, retry: next(resolveSpec(source.kind, source.spec).retry) });
+        };
+
+        const delay = textInput("wtr-number wtr-number-small");
+        delay.dataset["arrowRetryDelay"] = edge.to;
+        delay.setAttribute("aria-label", "First retry after, ms");
+        delay.value = String(Number((policy.retry.delay * 1000).toFixed(2)));
+        delay.addEventListener("change", () => {
+          const parsed = parseRetryDelay(delay.value);
+          if (!parsed.ok) {
+            error.textContent = parsed.error;
+            return;
+          }
+          setRetry(
+            (retry) => withRetryDelay(retry, parsed.milliseconds / 1000),
+            () => update(setCallPolicy(doc, edge.from, edge.to, withCallRetryDelay(edge.policy ?? {}, parsed.milliseconds))),
+          );
+        });
+
+        const budget = textInput("wtr-number wtr-number-small");
+        budget.dataset["arrowRetryBudget"] = edge.to;
+        budget.setAttribute("aria-label", "Retry budget, % of requests");
+        budget.value = formatRetryBudget(policy.retry);
+        budget.addEventListener("change", () => {
+          const parsed = parseRetryBudget(budget.value);
+          if (!parsed.ok) {
+            error.textContent = parsed.error;
+            return;
+          }
+          setRetry(
+            (retry) => withRetryBudget(retry, parsed.share),
+            () => update(setCallPolicy(doc, edge.from, edge.to, withCallRetryBudget(edge.policy ?? {}, parsed.share))),
+          );
+        });
+
+        const firstWait = element("label", "wtr-field");
+        firstWait.append(element("span", "wtr-field-label", "First retry after"), delay, element("span", "wtr-field-unit", "ms"));
+        const capped = element("label", "wtr-field");
+        capped.append(
+          element("span", "wtr-field-label", "Retry budget"),
+          budget,
+          element("span", "wtr-field-unit", "%"),
+        );
+        inspector.append(firstWait, capped);
+      }
+
       const sentence = element("p", "wtr-capacity", describeCallPolicy(policy));
       sentence.dataset["arrowPolicy"] = edge.to;
-      inspector.append(giveUp, askAgain, sentence);
+      inspector.append(sentence);
     }
     inspector.append(error);
 

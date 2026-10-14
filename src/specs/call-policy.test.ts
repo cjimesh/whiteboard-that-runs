@@ -131,6 +131,17 @@ describe("a retry on a dependency call", () => {
     expect(storm.goodput).toBeLessThan(1);
   }, 30_000);
 
+  it("is held to its budget: retries at most that share of requests", () => {
+    // The same storm, with one retry allowed per ten requests. Without a budget
+    // the caller retries ~200/s; with it, ~20/s, and the spine is asked roughly
+    // 1.1× rather than 2× — the cap a budget exists to put on a storm.
+    const budgeted = window(spine({ timeout: TIGHT, retry: { ...RETRY_ONCE, budget: 0.1 } }, 1000), 100, 300);
+
+    expect(budgeted.callerRetries).toBeGreaterThan(15);
+    expect(budgeted.callerRetries).toBeLessThan(21);
+    expect(budgeted.spineArrivals / 200).toBeLessThan(1.11);
+  }, 30_000);
+
   it("is counted on the caller, which is the component doing it", () => {
     const storm = window(spine({ timeout: TIGHT, retry: RETRY_ONCE }, 1000), 100, 300);
 

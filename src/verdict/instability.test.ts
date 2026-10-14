@@ -165,7 +165,7 @@ describe("detecting a fold", () => {
 
     expect(verdict.holds).toBe(false);
     expect(verdict.cause).toBe("loss");
-    expect(verdict.reason).toContain("never completed");
+    expect(verdict.reason).toContain("more than 2% lost");
   });
 
   it("does not fire on a spike that drains inside the window", () => {

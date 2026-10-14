@@ -17,7 +17,7 @@
  * if the dependency refuses. That is exactly what every dependency call did
  * before this existed, so every saved model runs unchanged.
  */
-import { withRetryCount } from "./retry.ts";
+import { RETRY_BUDGET_BURST, withRetryBudget, withRetryCount, withRetryDelay } from "./retry.ts";
 import { resolveSpec, validateSpec, type RetrySpec, type SpecValidation, type TimeoutSpec } from "./format.ts";
 
 export interface CallPolicy {
@@ -98,6 +98,49 @@ export function withCallRetries(policy: PartialCallPolicy, attempts: number | nu
   return { ...policy, retry: withRetryCount(resolveCallPolicy(policy).retry, attempts) };
 }
 
+/** Set how long the call waits before asking again the first time. */
+export function withCallRetryDelay(policy: PartialCallPolicy, milliseconds: number): PartialCallPolicy {
+  return { ...policy, retry: withRetryDelay(resolveCallPolicy(policy).retry, milliseconds / 1000) };
+}
+
+/** Set the call's retry budget, as a share of requests. `null` takes it off. */
+export function withCallRetryBudget(policy: PartialCallPolicy, share: number | null): PartialCallPolicy {
+  return { ...policy, retry: withRetryBudget(resolveCallPolicy(policy).retry, share) };
+}
+
+export type RetryDelayInput = { ok: true; milliseconds: number } | { ok: false; error: string };
+
+/** "100", "0.1 s", or 0 for straight away. */
+export function parseRetryDelay(text: string): RetryDelayInput {
+  const trimmed = text.trim();
+  const match = /^([0-9]*\.?[0-9]+)\s*(ms|millisecond?s?|s|sec|secs|seconds?)?$/i.exec(trimmed);
+  if (match === null) {
+    return { ok: false, error: `"${trimmed}" is not a wait. Enter milliseconds, for example 100, or 0 for straight away.` };
+  }
+  const value = Number(match[1]);
+  return { ok: true, milliseconds: /^s/i.test(match[2] ?? "") ? value * 1000 : value };
+}
+
+export type RetryBudgetInput = { ok: true; share: number | null } | { ok: false; error: string };
+
+/** "10" or "10%" of requests; "off" for no budget. */
+export function parseRetryBudget(text: string): RetryBudgetInput {
+  const trimmed = text.trim();
+  if (/^(off|none|no|0%?)$/i.test(trimmed)) return { ok: true, share: null };
+  const match = /^([0-9]*\.?[0-9]+)\s*%?$/.exec(trimmed);
+  const percent = match === null ? NaN : Number(match[1]);
+  if (!(percent > 0 && percent <= 100)) {
+    return { ok: false, error: `"${trimmed}" is not a share of requests. Enter a percentage, for example 10, or 'off'.` };
+  }
+  return { ok: true, share: percent / 100 };
+}
+
+/** The budget as a field shows it: a percentage, or "off". */
+export function formatRetryBudget(retry: RetrySpec): string {
+  const budget = retry.budget ?? 0;
+  return budget > 0 ? String(Number((budget * 100).toFixed(2))) : "off";
+}
+
 export type RetriesInput = { ok: true; attempts: number | null } | { ok: false; error: string };
 
 export function parseRetries(text: string): RetriesInput {
@@ -110,6 +153,16 @@ export function parseRetries(text: string): RetriesInput {
 function formatSeconds(seconds: number): string {
   const ms = seconds * 1000;
   return ms >= 1000 ? `${Number(seconds.toFixed(2))} s` : `${Number(ms.toFixed(2))} ms`;
+}
+
+/** The budget's half of the sentence, or nothing when there is none. */
+export function describeRetryBudget(retry: RetrySpec): string {
+  const budget = retry.budget ?? 0;
+  if (budget <= 0) return "";
+  return (
+    ` Retries are capped at ${Number((budget * 100).toFixed(2))}% of requests, with up to ${RETRY_BUDGET_BURST} ` +
+    "saved for a burst; past that a failed call fails the request."
+  );
 }
 
 /** What the call does, in a sentence — the behaviour, not the settings. */
@@ -132,5 +185,5 @@ export function describeCallPolicy(partial: PartialCallPolicy): string {
   // Said because it is the part people forget: the attempt it gave up on is
   // still at the dependency, being worked on for nobody.
   const abandoned = timeout.policy === "none" ? "" : " The attempt it gave up on is still being worked on.";
-  return `${waits}; asks ${times}, ${spacing}.${abandoned}`;
+  return `${waits}; asks ${times}, ${spacing}.${describeRetryBudget(retry)}${abandoned}`;
 }

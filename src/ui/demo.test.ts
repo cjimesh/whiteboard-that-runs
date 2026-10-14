@@ -10,7 +10,8 @@
  */
 import { describe, expect, it } from "vitest";
 import { createModelSimulation } from "../specs/registry.ts";
-import { DEMO_BASE_RATE, DEMO_COLLAPSE_RATE, demoGuidance, demoTimeline, RETRY_PRESETS } from "./demo.ts";
+import { DEMO_BASE_RATE, DEMO_COLLAPSE_RATE, demoDocument, demoGuidance, demoTimeline, RETRY_PRESETS } from "./demo.ts";
+import { toTimeline } from "../model/document.ts";
 
 /** Goodput over the trailing second of a run to `until`. */
 function goodputAt(sim: ReturnType<typeof createModelSimulation>, until: number): number {
@@ -108,4 +109,43 @@ describe("the tour tells the truth", () => {
     // offered, because the timeout keeps clipping calls once the queue is deep.
     expect(goodputAt(sim, 120)).toBeLessThan(DEMO_COLLAPSE_RATE);
   }, 60_000);
+});
+
+describe("a retry budget on the demo", () => {
+  it("brings a collapsed demo back, and less far than turning retries off", () => {
+    // The fix a reviewer reaches for first, now one the tool can run. Measured
+    // over five seeds: 21–29/s with the budget, 33–37/s without retries, from 0.
+    const recovered = (retry: (typeof RETRY_PRESETS)[keyof typeof RETRY_PRESETS]): number => {
+      const sim = createModelSimulation({
+        ...demoTimeline(),
+        load: [{ rate: DEMO_COLLAPSE_RATE, duration: 3600 }],
+        bucketWidth: 1,
+      });
+      sim.runUntil(60);
+      for (const id of ["api-1", "api-2"]) {
+        const authored = demoTimeline().model.nodes.find((node) => node.id === id)?.spec;
+        sim.record({ kind: "set-spec", nodeId: id, spec: { ...authored, retry } as Record<string, unknown> });
+      }
+      sim.runUntil(360);
+      const window = sim.series().filter((bucket) => bucket.start >= 90);
+      return window.reduce((total, bucket) => total + bucket.system.completions, 0) / window.length;
+    };
+
+    const budgeted = recovered(RETRY_PRESETS.budgeted);
+    expect(budgeted).toBeGreaterThan(DEMO_COLLAPSE_RATE * 0.35);
+    expect(budgeted).toBeLessThan(recovered(RETRY_PRESETS.none));
+  }, 120_000);
+});
+
+describe("the demo as a model", () => {
+  // The opening run and the editable demo were once the same system under two
+  // sets of names, so the tour said api-1 and the editor said service-1, and
+  // "Keep these changes" had to be hidden on the run it would matter most on.
+  it("uses the same names and wiring as the run the app opens on", () => {
+    const run = demoTimeline().model;
+    const model = toTimeline(demoDocument()).model;
+    expect(model.entryId).toBe(run.entryId);
+    expect(model.nodes.map((node) => node.id)).toEqual(run.nodes.map((node) => node.id));
+    expect(model.edges.map((edge) => `${edge.from}→${edge.to}`)).toEqual(run.edges.map((edge) => `${edge.from}→${edge.to}`));
+  });
 });

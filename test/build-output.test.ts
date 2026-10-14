@@ -455,20 +455,20 @@ describe("authoring a system in the shipped file (F1)", () => {
 
   it("wires it by clicking the canvas, and then the model runs", async () => {
     // A cache in front of the datastore, which is how somebody would actually
-    // add one. Wiring it to `service-1` instead would be refused, and correctly:
+    // add one. Wiring it to `api-1` instead would be refused, and correctly:
     // a service sends to one place, and fan-out is the balancer's job.
     const withCache = addComponent(demoDocument(), { kind: "cache" }).document;
 
-    await clickComponent(toTimeline(withCache).model, "balancer-1");
+    await clickComponent(toTimeline(withCache).model, "gateway");
     await page.locator('[data-action="connect"]').click();
     await clickComponent(toTimeline(withCache).model, "cache-1");
 
     // Adding that wire re-ranks the graph, so the second wire has to be clicked
     // against the picture the author is now looking at.
-    const fedByBalancer = connect(withCache, "balancer-1", "cache-1");
+    const fedByBalancer = connect(withCache, "gateway", "cache-1");
     await clickComponent(toTimeline(fedByBalancer).model, "cache-1");
     await page.locator('[data-action="connect"]').click();
-    await clickComponent(toTimeline(fedByBalancer).model, "datastore-1");
+    await clickComponent(toTimeline(fedByBalancer).model, "orders-db");
 
     await expect.poll(async () => await page.locator('[data-action="run"]').isDisabled()).toBe(false);
 
@@ -496,7 +496,7 @@ describe("authoring a system in the shipped file (F1)", () => {
     await page.locator('[data-action="edit"]').click();
     await page.locator('[data-surface="editor"]').waitFor();
 
-    const withCache = connect(addComponent(demoDocument(), { kind: "cache" }).document, "balancer-1", "cache-1");
+    const withCache = connect(addComponent(demoDocument(), { kind: "cache" }).document, "gateway", "cache-1");
     await clickComponent(toTimeline(withCache).model, "cache-1");
     await page.locator('[data-action="proposal"]').click();
     await expect.poll(async () => await page.locator('[data-action="proposal"]').getAttribute("data-marked")).toBe(
@@ -540,17 +540,17 @@ describe("authoring a system in the shipped file (F1)", () => {
     await page.locator('[data-surface="editor"]').waitFor();
 
     const authored = connect(
-      connect(addComponent(demoDocument(), { kind: "cache" }).document, "balancer-1", "cache-1"),
+      connect(addComponent(demoDocument(), { kind: "cache" }).document, "gateway", "cache-1"),
       "cache-1",
-      "datastore-1",
+      "orders-db",
     );
 
     // The datastore is what nothing is wired out of, so it is what can carry
     // somebody else's load.
-    await clickComponent(toTimeline(authored).model, "datastore-1");
-    await page.locator('[data-action="add-traffic:datastore-1"]').click();
+    await clickComponent(toTimeline(authored).model, "orders-db");
+    await page.locator('[data-action="add-traffic:orders-db"]').click();
 
-    const rate = page.locator('[data-traffic-rate="traffic-datastore-1"]');
+    const rate = page.locator('[data-traffic-rate="traffic-orders-db"]');
     await rate.fill("15");
     await rate.dispatchEvent("change");
 
@@ -561,9 +561,9 @@ describe("authoring a system in the shipped file (F1)", () => {
     await page.locator('[data-surface="run"]').waitFor();
 
     // The live knob is derived from the model, like every other knob here.
-    const knob = page.locator('[data-action="traffic:traffic-datastore-1"]');
+    const knob = page.locator('[data-action="traffic:traffic-orders-db"]');
     await expect.poll(async () => await knob.count()).toBe(1);
-    await openSteer(page, "datastore-1");
+    await openSteer(page, "orders-db");
     expect(await knob.inputValue()).toBe("15");
 
     // And it steers: turning the neighbour off is the question "what does this

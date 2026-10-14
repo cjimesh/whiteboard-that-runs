@@ -580,13 +580,130 @@ describe("naming what folded first", () => {
   });
 
   it("agrees with itself: exactly one origin, and every other folding node carries it", () => {
-    const { frame } = frameAt(60, overloadedDatastore);
-    const folding = frame.nodes.filter((node) => node.health === "fold");
+    for (const options of [overloadedDatastore, slowDatastoreNoTimeout]) {
+      const { frame } = frameAt(60, options);
+      const folding = frame.nodes.filter((node) => node.health === "fold" && node.role !== "origin");
 
-    expect(folding.filter((node) => node.role === "origin")).toHaveLength(1);
-    expect(folding.filter((node) => node.role === "carrier").map((node) => node.id).sort()).toEqual(
-      [...(frame.culprit?.carrying ?? [])].sort(),
-    );
+      expect(frame.nodes.filter((node) => node.role === "origin").map((node) => node.id)).toEqual([frame.culprit?.id]);
+      expect(folding.every((node) => node.role === "carrier")).toBe(true);
+      expect(folding.map((node) => node.id).sort()).toEqual([...(frame.culprit?.carrying ?? [])].sort());
+    }
+  });
+
+  /**
+   * The victim case, from outside feedback: a caller with no timeout waiting on a
+   * datastore that is the real limit. The caller can only have four calls open,
+   * so the datastore's backlog never passes four — it turns nothing away and its
+   * queue never grows. Every loss is at the caller, whose own queue fills.
+   */
+  const slowDatastoreNoTimeout = {
+    model: {
+      entryId: "api",
+      nodes: [
+        {
+          id: "api",
+          kind: "service",
+          spec: {
+            concurrency: 4,
+            service: { policy: "fixed", mean: 0.01 },
+            queue: { policy: "fifo", capacity: 20 },
+            timeout: { policy: "none", after: 1 },
+            retry: { policy: "none", attempts: 0, delay: 0, factor: 2, maxDelay: 1 },
+          },
+        },
+        {
+          id: "db",
+          kind: "datastore",
+          spec: { concurrency: 1, service: { policy: "exponential", mean: 0.05 }, queue: { policy: "fifo", capacity: 500 } },
+        },
+      ],
+      edges: [{ from: "api", to: "db" }],
+    },
+    load: [{ rate: 30, duration: 600 }],
+  };
+
+  it("blames the datastore a caller is waiting on, even though only the caller loses work", () => {
+    const { frame } = frameAt(60, slowDatastoreNoTimeout);
+
+    expect(nodeIn(frame, "db").health).not.toBe("fold");
+    expect(nodeIn(frame, "api").health).toBe("fold");
+    expect(frame.culprit?.id).toBe("db");
+    expect(frame.culprit?.carrying).toEqual(["api"]);
+    expect(nodeIn(frame, "api").role).toBe("carrier");
+    expect(frame.culprit?.reason).toMatch(/at capacity.*loses nothing itself/);
+  });
+
+  it("follows the wait through a hand-off: the request is answered only when the road ends", () => {
+    // api → queue → worker, the api waiting (a service's default). The queue's
+    // four consumers are the limit; the api is answered only once its request has
+    // been through them, so its threads are held by the queue's backlog.
+    const worker = {
+      concurrency: 50,
+      service: { policy: "fixed", mean: 0.001 },
+      queue: { policy: "fifo", capacity: 100 },
+      timeout: { policy: "none", after: 1 },
+      retry: { policy: "none", attempts: 0, delay: 0, factor: 2, maxDelay: 1 },
+    };
+    const { frame } = frameAt(60, {
+      model: {
+        entryId: "api",
+        nodes: [
+          { id: "api", kind: "service", spec: (slowDatastoreNoTimeout.model.nodes[0] as { spec: Record<string, unknown> }).spec },
+          {
+            id: "queue",
+            kind: "queue",
+            spec: {
+              concurrency: 1,
+              service: { policy: "exponential", mean: 0.05 },
+              queue: { policy: "fifo", capacity: 10000 },
+              downstream: { policy: "fire-and-forget" },
+            },
+          },
+          { id: "worker", kind: "service", spec: worker },
+        ],
+        edges: [
+          { from: "api", to: "queue" },
+          { from: "queue", to: "worker" },
+        ],
+      },
+      load: [{ rate: 30, duration: 600 }],
+    });
+
+    expect(frame.culprit?.id).toBe("queue");
+    expect(frame.culprit?.carrying).toEqual(["api"]);
+  });
+
+  it("does not excuse a caller that does not wait", () => {
+    // The same slow datastore, but the api hands its work on and is done with it.
+    // Its own thread is the limit (one, 200 ms), and the datastore being busy
+    // behind it is not why it is losing work.
+    const { frame } = frameAt(60, {
+      model: {
+        entryId: "api",
+        nodes: [
+          {
+            id: "api",
+            kind: "service",
+            spec: {
+              concurrency: 1,
+              service: { policy: "fixed", mean: 0.2 },
+              queue: { policy: "fifo", capacity: 5 },
+              downstream: { policy: "fire-and-forget" },
+            },
+          },
+          {
+            id: "db",
+            kind: "datastore",
+            spec: { concurrency: 1, service: { policy: "fixed", mean: 0.25 }, queue: { policy: "fifo", capacity: 10000 } },
+          },
+        ],
+        edges: [{ from: "api", to: "db" }],
+      },
+      load: [{ rate: 30, duration: 600 }],
+    });
+
+    expect(nodeIn(frame, "db").utilization).toBeGreaterThan(0.95);
+    expect(frame.culprit?.id).toBe("api");
   });
 });
 

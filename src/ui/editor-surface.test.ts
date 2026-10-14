@@ -502,6 +502,30 @@ describe("stating a dependency call's timeout and retry", () => {
     expect(problems()).toBe("");
   });
 
+  it("asks how it retries only once it does: the first wait and a budget, both stated", () => {
+    depends();
+    expect(root.querySelector("[data-arrow-retry-budget]")).toBeNull();
+
+    setValue("[data-arrow-retries]", "3");
+    expect(find<HTMLInputElement>("[data-arrow-retry-delay]").value).toBe("100");
+    setValue("[data-arrow-retry-delay]", "250");
+    setValue("[data-arrow-retry-budget]", "10");
+
+    expect(call()?.policy).toMatchObject({ retry: { attempts: 3, delay: 0.25, budget: 0.1 } });
+    expect(find("[data-arrow-policy]").textContent).toMatch(/250 ms apart\. Retries are capped at 10% of requests/);
+    expect(problems()).toBe("");
+  });
+
+  it("puts a hand-off's retry budget on the sender", () => {
+    depends();
+    clickArrow("app-1", "db-1");
+    setValue("[data-arrow-timeout]", "250");
+    setValue("[data-arrow-retries]", "3");
+    setValue("[data-arrow-retry-budget]", "20%");
+
+    expect(surface.document().components[0]?.spec.retry).toMatchObject({ attempts: 3, budget: 0.2 });
+  });
+
   it("refuses text that is not a duration, and changes nothing", () => {
     depends();
     setValue("[data-arrow-timeout]", "soon");

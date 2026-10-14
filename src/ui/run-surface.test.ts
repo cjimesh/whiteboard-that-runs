@@ -268,7 +268,7 @@ describe("naming what folded first", () => {
     globalThis.dispatchEvent(new window.Event("resize"));
 
     expect(culprit().dataset["culprit"]).toBe("orders-db");
-    expect(culprit().textContent).toMatch(/^orders-db folded first/);
+    expect(culprit().textContent).toMatch(/^orders-db is the cause/);
     expect(culprit().textContent).toMatch(/api-1, api-2 are red because of it, not with it/);
   });
 
@@ -634,6 +634,22 @@ describe("the breaking-point panel", () => {
     expect(root.querySelector('[data-panel="verdict"]')).toBeNull();
   });
 
+  it("lets the page grow while an answer is open, and locks it again after", () => {
+    const surface = find('[data-surface="run"]');
+    expect(surface.dataset["answer"]).toBeUndefined();
+
+    click('[data-action="sweep"]');
+    click('[data-action="validation"]');
+    expect(surface.dataset["answer"]).toBe("open");
+    expect(surface.style.getPropertyValue("--wtr-stage-height")).toMatch(/px$/);
+
+    click('[data-action="sweep"]');
+    expect(surface.dataset["answer"]).toBe("open");
+    click('[data-action="validation"]');
+    expect(surface.dataset["answer"]).toBeUndefined();
+    expect(surface.style.getPropertyValue("--wtr-stage-height")).toBe("");
+  });
+
   it("says what it is doing before any probe has landed", () => {
     click('[data-action="sweep"]');
     const panel = find('[data-panel="verdict"]');
@@ -806,7 +822,7 @@ describe("comparing against a baseline on the run surface (F2)", () => {
 describe("steering other traffic live", () => {
   /** The demo's datastore, with somebody else's load stated on it. */
   function withOtherTraffic(): { sim: Simulation; surface: RunSurface } {
-    const { document: doc } = addTrafficSource(demoDocument(), "datastore-1", 12);
+    const { document: doc } = addTrafficSource(demoDocument(), "orders-db", 12);
     const model = createModelSimulation(toTimeline(doc));
     const running = createRunSurface(model, controlsForDocument(doc));
     root.append(running.element);
@@ -824,24 +840,24 @@ describe("steering other traffic live", () => {
   it("offers a field for it, starting at the rate the model states", () => {
     const running = withOtherTraffic();
     extra = running.surface;
-    expect(find<HTMLInputElement>('[data-action="traffic:traffic-datastore-1"]').value).toBe("12");
+    expect(find<HTMLInputElement>('[data-action="traffic:traffic-orders-db"]').value).toBe("12");
   });
 
   it("records the change in the log a replay reads", () => {
     const running = withOtherTraffic();
     extra = running.surface;
     running.sim.runUntil(2);
-    setValue('[data-action="traffic:traffic-datastore-1"]', "40", "change");
+    setValue('[data-action="traffic:traffic-orders-db"]', "40", "change");
 
     const recorded = running.sim.recorded().mutations;
-    expect(recorded.at(-1)).toMatchObject({ kind: "set-source-rate", sourceId: "traffic-datastore-1", rate: 40 });
+    expect(recorded.at(-1)).toMatchObject({ kind: "set-source-rate", sourceId: "traffic-orders-db", rate: 40 });
   });
 
   it("marks the reading as steered, like every other live change", () => {
     const running = withOtherTraffic();
     extra = running.surface;
     running.sim.runUntil(2);
-    setValue('[data-action="traffic:traffic-datastore-1"]', "40", "change");
+    setValue('[data-action="traffic:traffic-orders-db"]', "40", "change");
 
     expect(running.surface.element.querySelector('[data-steered="true"]')).not.toBeNull();
   });
@@ -850,7 +866,7 @@ describe("steering other traffic live", () => {
     const running = withOtherTraffic();
     extra = running.surface;
     running.sim.runUntil(2);
-    setValue('[data-action="traffic:traffic-datastore-1"]', "some", "change");
+    setValue('[data-action="traffic:traffic-orders-db"]', "some", "change");
 
     expect(running.sim.recorded().mutations.some((m) => m.kind === "set-source-rate")).toBe(false);
     expect(running.surface.element.textContent).toMatch(/zero or more requests per second/);
@@ -865,8 +881,8 @@ describe("steering a dependency call live", () => {
   /** The demo, with the first replica also asking a Redis — 10 ms timeout, one retry. */
   function withCall(policy: Record<string, unknown> | null): { sim: Simulation; surface: RunSurface } {
     let doc = addComponent(demoDocument(), { kind: "datastore", spec: { concurrency: 1 } }).document;
-    doc = connect(doc, "service-1", "datastore-2", "call");
-    if (policy !== null) doc = setCallPolicy(doc, "service-1", "datastore-2", policy);
+    doc = connect(doc, "api-1", "datastore-1", "call");
+    if (policy !== null) doc = setCallPolicy(doc, "api-1", "datastore-1", policy);
     const model = createModelSimulation(toTimeline(doc));
     const running = createRunSurface(model, controlsForDocument(doc));
     root.append(running.element);
@@ -877,8 +893,8 @@ describe("steering a dependency call live", () => {
     timeout: { policy: "fixed", after: 0.01 },
     retry: { policy: "fixed", attempts: 1, delay: 0, factor: 1, maxDelay: 0 },
   };
-  const TIMEOUT = '[data-action="call-timeout:service-1:datastore-2"]';
-  const RETRIES = '[data-action="call-retries:service-1:datastore-2"]';
+  const TIMEOUT = '[data-action="call-timeout:api-1:datastore-1"]';
+  const RETRIES = '[data-action="call-retries:api-1:datastore-1"]';
 
   let extra: RunSurface | null = null;
   afterEach(() => {
@@ -891,7 +907,7 @@ describe("steering a dependency call live", () => {
 
     expect(find<HTMLInputElement>(TIMEOUT).value).toBe("10");
     expect(find<HTMLInputElement>(RETRIES).value).toBe("1");
-    expect(find('[data-conversion="call:service-1:datastore-2"]').textContent).toBe(
+    expect(find('[data-conversion="call:api-1:datastore-1"]').textContent).toBe(
       "Gives up after 10 ms; asks once more, straight away. The attempt it gave up on is still being worked on.",
     );
   });
@@ -903,9 +919,27 @@ describe("steering a dependency call live", () => {
     setValue(RETRIES, "off", "change");
 
     const last = running.sim.recorded().mutations.at(-1);
-    expect(last).toMatchObject({ kind: "set-call", from: "service-1", to: "datastore-2" });
+    expect(last).toMatchObject({ kind: "set-call", from: "api-1", to: "datastore-1" });
     expect(last).toMatchObject({ policy: { timeout: { policy: "fixed", after: 0.01 }, retry: { policy: "none" } } });
     expect(running.surface.element.querySelector('[data-steered="true"]')).not.toBeNull();
+  });
+
+  it("sets a retry budget live, keeping the rest of the policy, and says what it does", () => {
+    const running = withCall(POLICY);
+    extra = running.surface;
+    running.sim.runUntil(2);
+    const BUDGET = '[data-action="call-budget:api-1:datastore-1"]';
+    expect(find<HTMLInputElement>(BUDGET).value).toBe("off");
+
+    setValue(BUDGET, "10%", "change");
+    expect(running.sim.recorded().mutations.at(-1)).toMatchObject({
+      kind: "set-call",
+      policy: { timeout: { policy: "fixed", after: 0.01 }, retry: { attempts: 1, budget: 0.1 } },
+    });
+    expect(find('[data-conversion="call:api-1:datastore-1"]').textContent).toMatch(/capped at 10% of requests/);
+
+    setValue(BUDGET, "plenty", "change");
+    expect(running.surface.element.textContent).toMatch(/is not a share of requests/);
   });
 
   it("keeps the running policy when the text is not a number of retries", () => {
