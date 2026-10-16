@@ -47,9 +47,23 @@ body {
     display: block;
     max-width: 34rem;
     margin: 0 auto;
-    padding: 4rem 1.5rem;
+    padding: 3rem 1.5rem;
     color: var(--muted);
     line-height: 1.6;
+  }
+
+  .wtr-narrow-notice h1 {
+    margin: 0 0 0.75rem;
+    font-size: 1.4rem;
+    color: var(--text);
+  }
+
+  .wtr-narrow-notice .wtr-narrow-pitch {
+    color: var(--text);
+  }
+
+  .wtr-narrow-notice a {
+    color: var(--accent);
   }
 }
 
@@ -181,6 +195,27 @@ body {
   gap: 30px;
   align-items: baseline;
 }
+
+/* The page's name and where its source lives, for a visitor who arrived at the
+   running demo with no README in front of them. Out of the way of the readouts,
+   and gone in Present mode, where the room needs the numbers and nothing else. */
+.wtr-brand {
+  margin: 0 0 0 auto;
+  font-size: 0.78rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.wtr-brand strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.wtr-brand a {
+  color: var(--accent);
+}
+
+.wtr-run-surface[data-mode="present"] .wtr-brand { display: none; }
 
 .wtr-readout {
   display: flex;
@@ -693,6 +728,18 @@ body {
 .wtr-guidance-action { display: block; }
 
 .wtr-guidance-watch { color: var(--muted); }
+
+.wtr-guidance-show {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 400;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
 
 .wtr-arm-error {
   margin: 0;

@@ -66,6 +66,9 @@ export interface RunSurface {
 
 const SPEEDS = [0.5, 1, 2, 4];
 
+/** A link the visitor follows, never a request the page makes. */
+const SOURCE_URL = "https://github.com/cjimesh/whiteboard-that-runs";
+
 function element<K extends keyof HTMLElementTagNameMap>(
   tag: K,
   className?: string,
@@ -237,6 +240,14 @@ export function createRunSurface(
   const stats = element("div", "wtr-stats");
   stats.append(offered.root, goodput.root, dropped.root, latency.root, inFlight.root);
 
+  const brand = element("p", "wtr-brand");
+  const source = element("a", undefined, "Source and README");
+  source.href = SOURCE_URL;
+  source.target = "_blank";
+  source.rel = "noopener noreferrer";
+  brand.append(element("strong", undefined, "Whiteboard That Runs"), " · ", source);
+  stats.append(brand);
+
   // ---------------------------------------------------------------- canvas
   const stage = element("div", "wtr-stage");
   const canvas = element("canvas", "wtr-canvas");
@@ -373,11 +384,13 @@ export function createRunSurface(
   // --------------------------------------------------------------- presets
   const presetRow = element("div", "wtr-presets");
   const notes = new Map<PresetControl, HTMLElement>();
+  const presetSelects = new Map<string, HTMLSelectElement>();
 
   for (const control of controls.presets) {
     const select = element("select", "wtr-select");
     select.dataset["action"] = `preset:${control.label.toLowerCase().replace(/\s+/g, "-")}`;
     select.setAttribute("aria-label", control.label);
+    presetSelects.set(control.label, select);
     for (const option of control.options) {
       const item = element("option", undefined, option.label);
       item.value = option.value;
@@ -805,10 +818,20 @@ export function createRunSurface(
     const list = element("ol", "wtr-guidance-steps");
     for (const step of steps) {
       const item = element("li", "wtr-guidance-step");
-      item.append(
-        element("strong", "wtr-guidance-action", step.action),
-        element("span", "wtr-guidance-watch", step.watch),
-      );
+      const action = element("strong", "wtr-guidance-action", step.action);
+      const target = step.control === undefined ? undefined : presetSelects.get(step.control);
+      if (target !== undefined) {
+        const show = element("button", "wtr-guidance-show", "Show me");
+        show.type = "button";
+        show.dataset["action"] = "show-control";
+        show.setAttribute("aria-label", `Show the ${step.control} control`);
+        show.addEventListener("click", () => {
+          target.scrollIntoView({ block: "center", behavior: "smooth" });
+          target.focus({ preventScroll: true });
+        });
+        action.append(" ", show);
+      }
+      item.append(action, element("span", "wtr-guidance-watch", step.watch));
       list.append(item);
     }
 

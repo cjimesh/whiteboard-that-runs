@@ -726,6 +726,34 @@ describe("the tour, for a viewer with nobody presenting (F3)", () => {
     expect(steps[0]?.querySelector(".wtr-guidance-watch")?.textContent).toBe(demoGuidance().steps[0]?.watch);
   });
 
+  it("brings the control a step names into view", () => {
+    // On a laptop-height window the Retry policy menu sits below the fold of the
+    // control column, and step 4 is the tour's payoff.
+    const scrolled: Element[] = [];
+    const original = window.HTMLElement.prototype.scrollIntoView;
+    window.HTMLElement.prototype.scrollIntoView = function (this: HTMLElement) {
+      scrolled.push(this);
+    };
+    try {
+      const shows = [...tourHost.querySelectorAll<HTMLButtonElement>('[data-action="show-control"]')];
+      expect(shows).toHaveLength(1);
+      shows[0]?.click();
+
+      const select = tourHost.querySelector('[data-action="preset:retry-policy"]');
+      expect(scrolled).toEqual([select]);
+      expect(document.activeElement).toBe(select);
+    } finally {
+      window.HTMLElement.prototype.scrollIntoView = original;
+    }
+  });
+
+  it("names the tool and links to its source", () => {
+    const link = tourHost.querySelector<HTMLAnchorElement>(".wtr-brand a");
+    expect(tourHost.querySelector(".wtr-brand")?.textContent).toContain("Whiteboard That Runs");
+    expect(link?.href).toBe("https://github.com/cjimesh/whiteboard-that-runs");
+    expect(link?.rel).toBe("noopener noreferrer");
+  });
+
   it("goes away when dismissed and does not come back", () => {
     // Scaffolding for the first minute. A presenter driving this in a room should
     // not have to talk over instructions written for somebody else.

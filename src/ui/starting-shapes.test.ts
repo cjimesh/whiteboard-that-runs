@@ -44,6 +44,15 @@ describe("starting shapes", () => {
     expect(sweep({ model: toTimeline(queue).model, seed: "shapes", baseRate: 50 }).firstToFold).toBe("queue-1");
   }, 120_000);
 
+  // The queue archetype says "The sender does not wait", so the shape's sender
+  // must not: it used to wait on the queue, the workers and the database.
+  it("has the queue shape's sender hand off without waiting", () => {
+    const queue = (STARTING_SHAPES.find((shape) => shape.id === "queue") as (typeof STARTING_SHAPES)[number]).build();
+    const sender = queue.components.find((component) => component.id === "app-1");
+    expect(sender?.spec.downstream?.policy).toBe("fire-and-forget");
+    expect(sender?.preset).toBeNull();
+  });
+
   it("offers a blank canvas too", () => {
     expect(STARTING_SHAPES.find((shape) => shape.id === "blank")?.build().components).toEqual([]);
   });

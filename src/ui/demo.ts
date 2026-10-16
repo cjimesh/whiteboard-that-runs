@@ -138,6 +138,12 @@ export interface GuidanceStep {
   action: string;
   /** What happens, and why it is worth watching. */
   watch: string;
+  /**
+   * The label of the preset control the step asks for, when it asks for one.
+   * The control column scrolls, and on a laptop-height window the control the
+   * tour's payoff step needs sits below the fold with nothing saying so.
+   */
+  control?: string;
 }
 
 export interface Guidance {
@@ -176,6 +182,7 @@ export function demoGuidance(): Guidance {
       },
       {
         action: "Set Retry policy to No retries.",
+        control: "Retry policy",
         // Measured, and deliberately not rounded up into a clean fix: at this
         // load the timeout is still clipping roughly a fifth of calls once the
         // retries stop, so goodput comes back to most of the offered load rather

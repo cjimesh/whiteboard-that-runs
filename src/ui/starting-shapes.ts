@@ -12,7 +12,7 @@
  * not have produced by hand.
  */
 import { addArchetype } from "../model/archetypes.ts";
-import { connect, emptyDocument, setLoad, type WhiteboardDocument } from "../model/document.ts";
+import { connect, emptyDocument, setLoad, setSpec, type WhiteboardDocument } from "../model/document.ts";
 import { demoDocument } from "./demo.ts";
 
 export interface StartingShape {
@@ -20,6 +20,17 @@ export interface StartingShape {
   readonly label: string;
   readonly blurb: string;
   build(): WhiteboardDocument;
+}
+
+/** What the editor does when an arrow is set to "Passes the request on, and moves on". */
+function handsOffWithoutWaiting(document: WhiteboardDocument, id: string): WhiteboardDocument {
+  const component = document.components.find((candidate) => candidate.id === id);
+  const spec = { ...component?.spec, downstream: { policy: "fire-and-forget" as const } };
+  const next = setSpec(document, id, spec);
+  return {
+    ...next,
+    components: next.components.map((candidate) => (candidate.id === id ? { ...candidate, preset: null } : candidate)),
+  };
 }
 
 function withLoad(document: WhiteboardDocument, rate: number): WhiteboardDocument {
@@ -77,6 +88,7 @@ export const STARTING_SHAPES: readonly StartingShape[] = [
       let doc = emptyDocument("A queue and workers");
       for (const kind of ["app", "queue", "app", "database"]) doc = addArchetype(doc, kind).document;
       doc = connect(doc, "app-1", "queue-1");
+      doc = handsOffWithoutWaiting(doc, "app-1");
       doc = connect(doc, "queue-1", "app-2");
       doc = connect(doc, "app-2", "db-1");
       return withLoad(doc, 50);

@@ -68,9 +68,19 @@ describe("single-file build (R11)", () => {
   it("declares no absolute network URLs anywhere in the bundle", () => {
     const urls = [...html.matchAll(/\bhttps?:\/\/[^\s"'`<>)]+/gi)].map((m) => m[0]);
     // Namespace/spec URLs (e.g. w3.org SVG) are inert identifiers, never fetched.
-    const fetchable = urls.filter((u) => !u.startsWith("http://www.w3.org/"));
+    // The project's own repository is a link a visitor may follow, never a
+    // request the page makes; it must appear only as an anchor's href.
+    const SOURCE = "https://github.com/cjimesh/whiteboard-that-runs";
+    const fetchable = urls.filter(
+      (u) => !u.startsWith("http://www.w3.org/") && u !== SOURCE && u !== `${SOURCE}#readme`,
+    );
 
     expect(fetchable).toEqual([]);
+    const sourceMentions = html.split(SOURCE).length - 1;
+    const asAnchorHref = [...html.matchAll(/<a\b[^>]*\bhref="https:\/\/github\.com\/cjimesh\/whiteboard-that-runs#readme"/g)].length;
+    // One anchor in the phone notice, one URL constant the run surface assigns to an anchor.
+    expect(asAnchorHref).toBe(1);
+    expect(sourceMentions).toBe(2);
   });
 
   it("runs from a real browser loading the file off disk, with every request blocked", async () => {
